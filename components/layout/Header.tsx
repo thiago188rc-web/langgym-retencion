@@ -47,7 +47,7 @@ export function Header() {
         <Link href="/importar">
           <Button variant="primary" size="md">
             <Upload size={16} />
-            Importar Excel
+            <span className="hidden sm:inline">Importar Excel</span>
           </Button>
         </Link>
       </div>

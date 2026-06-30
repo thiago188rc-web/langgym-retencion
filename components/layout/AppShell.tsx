@@ -3,6 +3,7 @@
 import { Dumbbell } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { MobileNav } from "./MobileNav";
 import { ToastViewport } from "@/components/ui/Toast";
 import { useHydrated } from "@/lib/useHydrated";
 
@@ -29,9 +30,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1240px] px-6 py-7">{children}</div>
+          <div className="mx-auto w-full max-w-[1240px] px-4 py-5 pb-24 md:px-6 md:py-7 md:pb-7">{children}</div>
         </main>
       </div>
+      <MobileNav />
       <ToastViewport />
     </div>
   );

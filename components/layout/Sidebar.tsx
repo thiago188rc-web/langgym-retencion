@@ -79,7 +79,7 @@ export function Sidebar() {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-border bg-surface/50">
+    <aside className="hidden h-full w-[248px] shrink-0 flex-col border-r border-border bg-surface/50 md:flex">
       <div className="px-4 pb-2 pt-5">
         <Logo />
       </div>
