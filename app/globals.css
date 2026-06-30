@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Lang Gym OS — Design System
+   Dark, premium, orange-led. Glow only where it matters.
+   ============================================================ */
+
+@theme {
+  /* Base oscura */
+  --color-bg: #0d1014;
+  --color-surface: #151a22;
+  --color-card: #1b212b;
+  --color-card-hover: #20272f;
+  --color-border: #2a313c;
+  --color-border-strong: #353d49;
+
+  /* Texto */
+  --color-fg: #ffffff;
+  --color-muted: #9ca3af;
+  --color-faint: #5b626d;
+
+  /* Naranja Lang Gym (protagonista) */
+  --color-accent: #ff6b00;
+  --color-accent-glow: #ff7a1a;
+  --color-accent-hover: #ff8f33;
+
+  /* Semánticos */
+  --color-success: #2ed477;
+  --color-warning: #ffb020;
+  --color-danger: #ff4d4d;
+  --color-info: #4da3ff;
+
+  /* Tipografía */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Radios */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  /* Animaciones */
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Ambient background: subtle orange glow top-left, void elsewhere. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 500px at 8% -8%, rgba(255, 107, 0, 0.08), transparent 60%),
+      radial-gradient(700px 600px at 100% 0%, rgba(77, 163, 255, 0.04), transparent 55%);
+  }
+
+  ::selection {
+    background: rgba(255, 107, 0, 0.28);
+    color: #fff;
+  }
+
+  /* Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #444c59;
+    background-clip: content-box;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism muy sutil */
+  .glass {
+    background: rgba(21, 26, 34, 0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  /* Glow naranja — solo en elementos clave */
+  .glow-accent {
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 0, 0.35),
+      0 0 24px rgba(255, 107, 0, 0.25),
+      0 0 60px rgba(255, 107, 0, 0.12);
+  }
+  .glow-accent-sm {
+    box-shadow: 0 0 18px rgba(255, 107, 0, 0.22);
+  }
+  .text-glow {
+    text-shadow: 0 0 20px rgba(255, 122, 26, 0.45);
+  }
+
+  /* Sombras premium */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .shadow-pop {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Gradiente naranja para acentos */
+  .bg-accent-gradient {
+    background-image: linear-gradient(135deg, #ff7a1a 0%, #ff6b00 100%);
+  }
+  .border-gradient-accent {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--color-card), var(--color-card)) padding-box,
+      linear-gradient(135deg, rgba(255, 122, 26, 0.5), rgba(255, 107, 0, 0.1)) border-box;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .animate-rise {
+    animation: rise 0.5s var(--ease-out-soft) both;
+  }
+  .animate-fade {
+    animation: fade 0.4s ease-out both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-card);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
+}
