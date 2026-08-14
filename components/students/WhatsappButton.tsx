@@ -46,7 +46,8 @@ export function WhatsappButton({
       rel="noopener noreferrer"
       onClick={() => {
         addFollowUp(student.id, { tipo, canal: "whatsapp", mensaje: message, resultado: "contactado" });
-        push(`Mensaje preparado para ${student.nombre}`, "success");
+        const name = student.nombre || student.nombreCompleto || "el alumno";
+        push(`Mensaje preparado para ${name}`, "success");
       }}
       className={cn(
         "group inline-flex items-center gap-1.5 rounded-[10px] font-medium text-white",

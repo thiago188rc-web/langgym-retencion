@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,10 +16,12 @@ import {
   Phone,
   Plus,
   Activity,
+  Send,
+  Sparkles,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { getSignals } from "@/lib/retention";
-import { cobroMessage, recuperacionMessage } from "@/lib/whatsapp";
+import { cobroMessage, recuperacionMessage, renderTemplate } from "@/lib/whatsapp";
 import { formatDate, relativeDays, isSameMonth } from "@/lib/dates";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
@@ -29,6 +31,7 @@ import { CuotaBadge, RiesgoBadge } from "@/components/students/StatusBadges";
 import { WhatsappButton } from "@/components/students/WhatsappButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { VariableToolbar, insertAtCursor } from "@/components/ui/VariableToolbar";
 import type { FollowUp } from "@/lib/types";
 
 const FU_META: Record<string, { label: string; icon: typeof MessageCircle; tone: string }> = {
@@ -93,8 +96,10 @@ function TimelineItem({
             {RESULT_LABEL[fu.resultado]}
           </span>
         </div>
-        {fu.mensaje && fu.tipo === "nota" && (
-          <p className="mt-1.5 rounded-lg bg-white/[0.02] px-3 py-2 text-[13px] text-muted">{fu.mensaje}</p>
+        {fu.mensaje && (
+          <p className="mt-1.5 whitespace-pre-line rounded-lg bg-white/[0.02] px-3 py-2 text-[13px] text-muted">
+            {fu.mensaje}
+          </p>
         )}
         {(fu.resultado === "contactado" || fu.resultado === "pendiente") && fu.tipo !== "nota" && (
           <div className="mt-2 flex gap-2">
@@ -121,6 +126,22 @@ export default function FichaPage() {
   const [note, setNote] = useState("");
 
   const student = useMemo(() => students.find((s) => s.id === params.id), [students, params.id]);
+
+  // Message composer state
+  const [messageMode, setMessageMode] = useState<"recuperacion" | "cobro" | "custom">("recuperacion");
+  const [customDraft, setCustomDraft] = useState<string>("");
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const rawTemplate = useMemo(() => {
+    if (messageMode === "recuperacion") return config.templates.recuperacion;
+    if (messageMode === "cobro") return config.templates.cobro;
+    return customDraft;
+  }, [messageMode, config.templates, customDraft]);
+
+  const activeRenderedMessage = useMemo(() => {
+    if (!student) return "";
+    return renderTemplate(rawTemplate, student, config);
+  }, [rawTemplate, student, config]);
 
   if (!student) {
     return (
@@ -178,6 +199,114 @@ export default function FichaPage() {
             tipo="cobro"
             label="Recordatorio de cuota"
           />
+        </div>
+      </Card>
+
+      {/* Message Composer & Live Preview Section */}
+      <Card className="p-5">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-[#1f8f4e]/20 text-[#22a058]">
+              <MessageCircle size={16} />
+            </div>
+            <div>
+              <h3 className="text-[14px] font-semibold text-fg">Enviar mensaje por WhatsApp</h3>
+              <p className="text-[12px] text-muted">
+                Previsualización con datos reales de {student.nombre || student.nombreCompleto}
+              </p>
+            </div>
+          </div>
+
+          {/* Mode Selector */}
+          <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-white/[0.02] p-1">
+            <button
+              type="button"
+              onClick={() => setMessageMode("recuperacion")}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                messageMode === "recuperacion"
+                  ? "bg-accent/15 text-accent font-semibold"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Recuperación
+            </button>
+            <button
+              type="button"
+              onClick={() => setMessageMode("cobro")}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                messageMode === "cobro"
+                  ? "bg-accent/15 text-accent font-semibold"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Cobro
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!customDraft) {
+                  setCustomDraft(`Hola {{nombre}} 👋\n\n`);
+                }
+                setMessageMode("custom");
+              }}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                messageMode === "custom"
+                  ? "bg-accent/15 text-accent font-semibold"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Personalizado
+            </button>
+          </div>
+        </div>
+
+        {/* Custom draft editor if custom mode selected */}
+        {messageMode === "custom" && (
+          <div className="mb-4 space-y-2">
+            <Textarea
+              ref={composerTextareaRef}
+              rows={3}
+              placeholder="Escribí tu mensaje usando variables como {{nombre}}..."
+              value={customDraft}
+              onChange={(e) => setCustomDraft(e.target.value)}
+            />
+            <VariableToolbar
+              compact
+              onInsert={(tag) =>
+                insertAtCursor(composerTextareaRef.current, tag, customDraft, (val) =>
+                  setCustomDraft(val),
+                )
+              }
+            />
+          </div>
+        )}
+
+        {/* Live Preview Box */}
+        <div className="rounded-xl border border-[#1f8f4e]/30 bg-[#0b3d24]/20 p-4">
+          <div className="mb-2 flex items-center justify-between border-b border-[#1f8f4e]/20 pb-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#22a058]">
+              <Sparkles size={13} />
+              <span>Mensaje personalizado listo para enviar</span>
+            </div>
+            {student.telefonoRaw && (
+              <span className="text-[12px] text-muted">
+                Destino: <span className="font-mono text-fg">{student.telefonoRaw}</span>
+              </span>
+            )}
+          </div>
+
+          <p className="whitespace-pre-line text-sm leading-relaxed text-fg">
+            {activeRenderedMessage || <span className="italic text-muted">Sin mensaje</span>}
+          </p>
+
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[#1f8f4e]/20 pt-3">
+            <WhatsappButton
+              student={student}
+              message={activeRenderedMessage}
+              tipo={messageMode === "cobro" ? "cobro" : "recuperacion"}
+              label="Abrir WhatsApp y enviar"
+            />
+          </div>
         </div>
       </Card>
 

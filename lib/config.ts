@@ -1,12 +1,12 @@
 import type { Config } from "./types";
 
-export const RECUPERACION_TEMPLATE_DEFAULT = `Hola {nombre} 👋
+export const RECUPERACION_TEMPLATE_DEFAULT = `Hola {{nombre}} 👋
 
 Vimos que hace unos días no estás viniendo al gimnasio.
 
 ¿Todo bien? ¿Podemos ayudarte en algo?`;
 
-export const COBRO_TEMPLATE_DEFAULT = `Hola {nombre} 👋
+export const COBRO_TEMPLATE_DEFAULT = `Hola {{nombre}} 👋
 
 Te escribimos para recordarte que tu cuota se encuentra vencida.
 
