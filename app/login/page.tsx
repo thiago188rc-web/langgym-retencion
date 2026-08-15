@@ -41,11 +41,10 @@ export default function LoginPage() {
 
       if (data?.user) {
         // Check profile role to redirect to appropriate dashboard
-        const { data: prof } = await supabase
-          .from("profiles")
+        const { data: prof } = (await (supabase.from("profiles") as any)
           .select("role")
           .eq("id", data.user.id)
-          .single();
+          .single()) as { data: { role: string } | null; error: any };
 
         if (prof?.role === "cliente") {
           router.push("/mi-panel");
