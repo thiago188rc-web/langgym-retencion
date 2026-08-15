@@ -137,14 +137,28 @@ test("11-12. cliente no puede modificar su propio role u organization_id (RLS + 
   const { error: roleErr } = await asClient.from("profiles").update({ role: "owner" }).eq("id", createdUserId);
   assert.ok(roleErr, "updating own role must be rejected");
 
-  const { data: orgs } = await admin.from("organizations").select("id").neq("id", "00000000-0000-0000-0000-000000000000").limit(2);
-  const otherOrgId = orgs?.find((o) => o.id)?.id;
-  if (otherOrgId) {
+  // Use a disposable throwaway organization so this genuinely tests a
+  // cross-org escalation attempt, instead of comparing organization_id
+  // against itself when only one organization exists in the environment.
+  const { data: tempOrg, error: tempOrgErr } = await admin
+    .from("organizations")
+    .insert({ name: "E2E Throwaway Org", slug: `e2e-throwaway-${RUN_ID}` })
+    .select("id")
+    .single();
+  assert.equal(tempOrgErr, null, "setup: creating a throwaway org for the test must succeed");
+
+  try {
     const { error: orgErr } = await asClient
       .from("profiles")
-      .update({ organization_id: otherOrgId })
+      .update({ organization_id: tempOrg.id })
       .eq("id", createdUserId);
-    assert.ok(orgErr, "updating own organization_id must be rejected");
+    assert.ok(orgErr, "updating own organization_id to a different org must be rejected");
+  } finally {
+    try {
+      await admin.from("organizations").delete().eq("id", tempOrg.id);
+    } catch {
+      /* best-effort cleanup */
+    }
   }
 });
 
