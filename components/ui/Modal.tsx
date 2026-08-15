@@ -4,19 +4,25 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect } from "react";
 
-export function Modal({
-  open,
-  onClose,
-  title,
-  children,
-  maxWidth = 560,
-}: {
+export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
   maxWidth?: number;
-}) {
+  size?: "sm" | "md" | "lg" | "xl" | "full" | string;
+  bodyClassName?: string;
+}
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  maxWidth,
+  size = "md",
+  bodyClassName = "p-5",
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -27,6 +33,14 @@ export function Modal({
       document.body.style.overflow = "";
     };
   }, [open, onClose]);
+
+  const resolvedMaxWidth = maxWidth ?? (
+    size === "sm" ? 420 :
+    size === "md" ? 520 :
+    size === "lg" ? 640 :
+    size === "xl" ? 780 :
+    size === "full" ? 960 : 560
+  );
 
   return (
     <AnimatePresence>
@@ -44,13 +58,13 @@ export function Modal({
             aria-modal="true"
             aria-label={title || "Ventana modal"}
             className="relative w-full glass rounded-[18px] border border-border-strong shadow-pop max-h-[90vh] overflow-y-auto"
-            style={{ maxWidth }}
+            style={{ maxWidth: resolvedMaxWidth }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           >
-            {title && (
+            {title ? (
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-[15px] font-semibold">{title}</h2>
                 <button
@@ -62,11 +76,12 @@ export function Modal({
                   <X size={16} />
                 </button>
               </div>
-            )}
-            <div className="p-5">{children}</div>
+            ) : null}
+            <div className={bodyClassName}>{children}</div>
           </motion.div>
         </div>
       )}
     </AnimatePresence>
   );
 }
+
