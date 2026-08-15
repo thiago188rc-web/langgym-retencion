@@ -50,6 +50,15 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  async redirects() {
+    return [
+      {
+        source: "/reqistro",
+        destination: "/registro",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
