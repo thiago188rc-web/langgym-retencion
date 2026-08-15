@@ -61,17 +61,42 @@ export async function POST(request: Request) {
         .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
 
       if (orgError || !orgs || orgs.length === 0) {
-        console.error("No organization found in database during client registration:", orgError);
+        // Auto-bootstrap primary gym organization if database is fresh
+        const { data: newOrg } = (await (supabaseAdmin.from("organizations") as any)
+          .insert({
+            name: "Lang Gym",
+            slug: "lang-gym",
+            owner_name: "Administración",
+          })
+          .select("id")
+          .single()) as { data: { id: string } | null; error: any };
+
+        if (newOrg?.id) {
+          targetOrgId = newOrg.id;
+          try {
+            await (supabaseAdmin.from("configurations") as any)
+              .insert({ organization_id: newOrg.id })
+              .select("id");
+          } catch {}
+        } else {
+          const { data: fallbackOrgs } = (await (supabaseAdmin.from("organizations") as any)
+            .select("id")
+            .limit(1)) as { data: { id: string }[] | null };
+          targetOrgId = fallbackOrgs?.[0]?.id || null;
+        }
+      } else {
+        targetOrgId = orgs[0].id;
+      }
+
+      if (!targetOrgId) {
         return NextResponse.json(
           {
             success: false,
-            error: "El gimnasio no se encuentra configurado en el sistema. Contactá a la administración del gimnasio para que complete la inicialización de la cuenta.",
-            code: "ORGANIZATION_NOT_INITIALIZED",
+            error: "No se pudo inicializar la organización del gimnasio. Verificá las credenciales de Supabase.",
           },
-          { status: 422 },
+          { status: 500 },
         );
       }
-      targetOrgId = orgs[0].id;
     }
 
     // 4. Create User in Supabase Auth
