@@ -5,11 +5,15 @@ import { useEffect, useRef, useState } from "react";
 export function CountUp({
   value,
   duration = 800,
+  prefix = "",
   suffix = "",
+  className = "",
 }: {
   value: number;
   duration?: number;
+  prefix?: string;
   suffix?: string;
+  className?: string;
 }) {
   const [display, setDisplay] = useState(0);
   const fromRef = useRef(0);
@@ -30,7 +34,8 @@ export function CountUp({
   }, [value, duration]);
 
   return (
-    <span className="tnum">
+    <span className={`tnum ${className}`.trim()}>
+      {prefix}
       {display}
       {suffix}
     </span>
