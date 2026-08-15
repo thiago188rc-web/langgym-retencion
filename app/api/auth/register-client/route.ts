@@ -52,20 +52,27 @@ export async function POST(request: Request) {
     });
 
     // 3. Resolve Organization securely on the server (never from client request)
-    const { data: orgs, error: orgError } = (await (supabaseAdmin.from("organizations") as any)
-      .select("id, name")
-      .order("created_at", { ascending: true })
-      .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
+    let targetOrgId: string | null = process.env.PRIMARY_ORG_ID || process.env.DEFAULT_ORGANIZATION_ID || null;
 
-    if (orgError || !orgs || orgs.length === 0) {
-      console.error("No organization found in database:", orgError);
-      return NextResponse.json(
-        { success: false, error: "No se encontró el gimnasio en el sistema." },
-        { status: 500 },
-      );
+    if (!targetOrgId) {
+      const { data: orgs, error: orgError } = (await (supabaseAdmin.from("organizations") as any)
+        .select("id, name")
+        .order("created_at", { ascending: true })
+        .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
+
+      if (orgError || !orgs || orgs.length === 0) {
+        console.error("No organization found in database during client registration:", orgError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "El gimnasio no se encuentra configurado en el sistema. Contactá a la administración del gimnasio para que complete la inicialización de la cuenta.",
+            code: "ORGANIZATION_NOT_INITIALIZED",
+          },
+          { status: 422 },
+        );
+      }
+      targetOrgId = orgs[0].id;
     }
-
-    const targetOrgId = orgs[0].id;
 
     // 4. Create User in Supabase Auth
     let userId: string | null = null;
@@ -143,9 +150,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5. Check if single unambiguous matching student exists in SIGA students table
+    // 5. Strict & Safe SIGA Student Linking
+    // Strategy:
+    // 1. Exact normalized email match in the organization.
+    // 2. Unambiguous exact phone match (minimum 10 digits).
+    // 3. If multiple matches exist -> DO NOT auto-link (leave for manual staff linking).
+    // 4. If student record is already linked to another profile -> DO NOT claim.
     let matchedStudentId: string | null = null;
-    const cleanDigits = cleanPhone.replace(/\D/g, "");
+    const phoneDigits = cleanPhone.replace(/\D/g, "");
 
     try {
       // Priority 1: Match by exact normalized email
@@ -157,21 +169,41 @@ export async function POST(request: Request) {
       if (emailMatches && emailMatches.length === 1) {
         matchedStudentId = emailMatches[0].id;
       } else if (!emailMatches || emailMatches.length === 0) {
-        // Priority 2: If no email match, match by phone digits (last 8 digits) if unique
-        if (cleanDigits.length >= 8) {
-          const suffix = cleanDigits.slice(-8);
+        // Priority 2: Match by exact normalized phone (only if 10+ digits to ensure full number with area code)
+        if (phoneDigits.length >= 10) {
+          const arIntlPhone = phoneDigits.startsWith("54") ? phoneDigits : `549${phoneDigits.replace(/^0+/, "")}`;
+          const localDigits = phoneDigits.slice(-10); // Standard 10-digit AR number (area code + number)
+
           const { data: phoneMatches } = (await (supabaseAdmin.from("students") as any)
             .select("id")
             .eq("organization_id", targetOrgId)
-            .ilike("telefono_raw", `%${suffix}%`)) as { data: { id: string }[] | null };
+            .or(`telefono.eq.${arIntlPhone},telefono.eq.${phoneDigits},telefono_raw.ilike.%${localDigits}%`)) as { data: { id: string }[] | null };
 
+          // STRICT CHECK: Only link if there is EXACTLY 1 unique match across the organization
           if (phoneMatches && phoneMatches.length === 1) {
             matchedStudentId = phoneMatches[0].id;
           }
         }
       }
+
+      // Priority 3: Conflict Prevention
+      // Check if this student is already claimed by another active user profile
+      if (matchedStudentId) {
+        const { data: existingProfileLink } = (await (supabaseAdmin.from("profiles") as any)
+          .select("id")
+          .eq("student_id", matchedStudentId)
+          .neq("id", userId)
+          .limit(1)) as { data: { id: string }[] | null };
+
+        if (existingProfileLink && existingProfileLink.length > 0) {
+          // Prevent account hijacking: student record is already linked to another user account
+          console.warn(`Student ${matchedStudentId} is already linked to another profile. Skipping auto-link.`);
+          matchedStudentId = null;
+        }
+      }
     } catch (matchErr) {
       console.warn("Student matching warning (non-fatal):", matchErr);
+      matchedStudentId = null;
     }
 
     // 6. Upsert user profile strictly with role = 'cliente'

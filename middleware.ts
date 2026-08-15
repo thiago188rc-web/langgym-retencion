@@ -74,6 +74,7 @@ export async function middleware(request: NextRequest) {
     // null/unrecognized and homeForRole() below routes to the controlled
     // "/perfil-pendiente" state — NEVER to the admin panel.
     let role: string | null = null;
+
     try {
       const { data: profile } = await supabase
         .from("profiles")

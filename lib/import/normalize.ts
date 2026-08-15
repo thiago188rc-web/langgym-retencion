@@ -9,6 +9,7 @@ export function cleanCell(value: unknown, maxLength = 500): string | null {
   // Convert to string and remove null bytes / non-printable control chars (except standard whitespace)
   let s = String(value)
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 
   if (s.length === 0) return null;

@@ -414,8 +414,23 @@ export async function adminUpdateReservationStatus(
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const supabase = createClient();
-    const updatePayload: Record<string, any> = { status };
 
+    // 1. Try atomic PostgreSQL RPC with server-side validation & timezone timestamps
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("admin_update_attendance", {
+      p_reservation_id: reservationId,
+      p_status: status,
+    });
+
+    if (!rpcErr && rpcRes) {
+      const parsed = rpcRes as { success: boolean; error?: string };
+      if (!parsed.success) {
+        return { success: false, error: parsed.error || "No se pudo actualizar el estado." };
+      }
+      return { success: true, error: null };
+    }
+
+    // 2. Direct table update fallback
+    const updatePayload: Record<string, any> = { status };
     if (status === "attended") {
       updatePayload.attended_at = new Date().toISOString();
     } else if (status === "cancelled") {
