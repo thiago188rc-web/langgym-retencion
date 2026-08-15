@@ -45,9 +45,11 @@ export async function middleware(request: NextRequest) {
 
   const isPublicRoute =
     pathname.startsWith("/login") ||
+    pathname.startsWith("/registro") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/auth/callback");
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/api/auth");
 
   // 1. Unauthenticated users trying to access private pages -> redirect to /login
   if (!user && !isPublicRoute) {
@@ -56,11 +58,47 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 2. Authenticated users trying to access login or forgot-password -> redirect to /
-  if (user && isPublicRoute && !pathname.startsWith("/reset-password") && !pathname.startsWith("/auth/callback")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+  // 2. Authenticated user handling
+  if (user) {
+    // Fetch profile role directly
+    let role = "staff";
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role) {
+        role = profile.role;
+      }
+    } catch {
+      // Fallback
+    }
+
+    const isClient = role === "cliente";
+    const isClientRoute = pathname.startsWith("/mi-panel") || pathname.startsWith("/cliente");
+
+    // A. Authenticated user hitting public auth routes -> redirect to respective home
+    if (isPublicRoute && !pathname.startsWith("/reset-password") && !pathname.startsWith("/auth/callback") && !pathname.startsWith("/api/auth")) {
+      const url = request.nextUrl.clone();
+      url.pathname = isClient ? "/mi-panel" : "/";
+      return NextResponse.redirect(url);
+    }
+
+    // B. Client trying to access administrative routes -> block and redirect to /mi-panel
+    if (isClient && !isClientRoute && !isPublicRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/mi-panel";
+      return NextResponse.redirect(url);
+    }
+
+    // C. Admin/Staff trying to access client-only portal -> redirect to admin dashboard
+    if (!isClient && isClientRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
@@ -71,3 +109,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
+

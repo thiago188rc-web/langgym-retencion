@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Info, TriangleAlert } from "lucide-react";
 import { uid } from "@/lib/utils";
 
-type ToastTone = "success" | "info" | "warning";
+type ToastTone = "success" | "info" | "warning" | "danger";
 interface Toast {
   id: string;
   message: string;
@@ -32,11 +32,13 @@ const icons = {
   success: Check,
   info: Info,
   warning: TriangleAlert,
+  danger: TriangleAlert,
 };
 const toneColor = {
   success: "text-success",
   info: "text-info",
   warning: "text-warning",
+  danger: "text-danger",
 };
 
 export function ToastViewport() {

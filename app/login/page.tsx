@@ -39,8 +39,19 @@ export default function LoginPage() {
         return;
       }
 
-      if (data?.session) {
-        router.push("/");
+      if (data?.user) {
+        // Check profile role to redirect to appropriate dashboard
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single();
+
+        if (prof?.role === "cliente") {
+          router.push("/mi-panel");
+        } else {
+          router.push("/");
+        }
         router.refresh();
       }
     } catch {
@@ -60,7 +71,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-fg">Lang Gym</h1>
           <p className="mt-1 text-[13px] text-muted">
-            Sistema de retención y recuperación de alumnos
+            Acceso al sistema y reserva de clases
           </p>
         </div>
 
@@ -133,6 +144,16 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          <div className="mt-5 border-t border-border pt-4 text-center text-[13px] text-muted">
+            ¿Sos alumno y todavía no tenés cuenta?{" "}
+            <Link
+              href="/registro"
+              className="font-medium text-accent hover:text-accent-hover transition-colors"
+            >
+              Registrate acá
+            </Link>
+          </div>
         </Card>
 
         {/* Security Notice Footer */}

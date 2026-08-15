@@ -1,11 +1,13 @@
 "use client";
-
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Dumbbell } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { MobileNav } from "./MobileNav";
 import { ToastViewport } from "@/components/ui/Toast";
 import { useHydrated } from "@/lib/useHydrated";
+import { useAuth } from "@/lib/auth/AuthContext";
 
 function BootScreen() {
   return (
@@ -22,7 +24,18 @@ function BootScreen() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
-  if (!hydrated) return <BootScreen />;
+  const { profile, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && profile && profile.role === "cliente") {
+      router.replace("/mi-panel");
+    }
+  }, [loading, profile, router]);
+
+  if (!hydrated || loading || (profile && profile.role === "cliente")) {
+    return <BootScreen />;
+  }
 
   return (
     <div className="flex h-dvh overflow-hidden bg-bg">
@@ -37,4 +50,4 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ToastViewport />
     </div>
   );
-}
+}

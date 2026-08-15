@@ -119,3 +119,94 @@ export function isSameMonth(iso: string | null, ref = todayISO()): boolean {
   if (!iso) return false;
   return iso.slice(0, 7) === ref.slice(0, 7);
 }
+
+const DAYS_ES = [
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+];
+
+const DAYS_ES_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+/**
+ * Returns today's ISO date string (YYYY-MM-DD) anchored to America/Argentina/Buenos_Aires
+ */
+export function getArgentinaTodayISO(): string {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return formatter.format(new Date());
+  } catch {
+    return todayISO();
+  }
+}
+
+/**
+ * Get day of week (0=Sunday, 1=Monday, ..., 6=Saturday) for a given YYYY-MM-DD date in Argentina
+ */
+export function getDayOfWeekFromISO(iso: string): number {
+  const clean = iso.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+  // Construct date at midday to avoid DST shift
+  const dateObj = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  return dateObj.getUTCDay();
+}
+
+/**
+ * "Lunes 17 de Agosto"
+ */
+export function formatDateFullES(iso: string | null): string {
+  if (!iso) return "—";
+  const clean = iso.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+  const dow = getDayOfWeekFromISO(clean);
+  const monthNames = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+  return `${DAYS_ES[dow]} ${d} de ${monthNames[m - 1]}`;
+}
+
+/**
+ * "Lun 17/08"
+ */
+export function formatDayAndDate(iso: string | null): string {
+  if (!iso) return "—";
+  const clean = iso.slice(0, 10);
+  const [, m, d] = clean.split("-").map(Number);
+  const dow = getDayOfWeekFromISO(clean);
+  return `${DAYS_ES_SHORT[dow]} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * "18:00" -> "18:00 hs"
+ */
+export function formatClassTime(timeStr: string | null): string {
+  if (!timeStr) return "—";
+  const clean = timeStr.slice(0, 5);
+  return `${clean} hs`;
+}
+
+/**
+ * Add or subtract days from an ISO date string (YYYY-MM-DD)
+ */
+export function shiftDateDays(isoDate: string, days: number): string {
+  const clean = isoDate.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const nextY = dt.getUTCFullYear();
+  const nextM = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const nextD = String(dt.getUTCDate()).padStart(2, "0");
+  return `${nextY}-${nextM}-${nextD}`;
+}
+
+

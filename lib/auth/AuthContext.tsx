@@ -74,30 +74,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (org) {
         setOrganization(org);
 
-        // Check if there is pending localStorage data to migrate to Supabase
-        if (typeof window !== "undefined") {
-          const migrationKey = `langgym_migrated_${org.id}`;
-          const alreadyMigrated = localStorage.getItem(migrationKey);
-          if (!alreadyMigrated) {
-            try {
-              const rawLocal = localStorage.getItem("langgym-store");
-              if (rawLocal) {
-                const parsed = JSON.parse(rawLocal);
-                const localStudents = parsed?.state?.students || [];
-                const localConfig = parsed?.state?.config;
-                if (localStudents.length > 0) {
-                  await migrateLocalStorageToSupabase(org.id, localStudents, localConfig);
+        // Only sync admin data store if user is staff/admin/owner (clients don't download students database)
+        if (prof.role !== "cliente") {
+          // Check if there is pending localStorage data to migrate to Supabase
+          if (typeof window !== "undefined") {
+            const migrationKey = `langgym_migrated_${org.id}`;
+            const alreadyMigrated = localStorage.getItem(migrationKey);
+            if (!alreadyMigrated) {
+              try {
+                const rawLocal = localStorage.getItem("langgym-store");
+                if (rawLocal) {
+                  const parsed = JSON.parse(rawLocal);
+                  const localStudents = parsed?.state?.students || [];
+                  const localConfig = parsed?.state?.config;
+                  if (localStudents.length > 0) {
+                    await migrateLocalStorageToSupabase(org.id, localStudents, localConfig);
+                  }
                 }
+                localStorage.setItem(migrationKey, new Date().toISOString());
+              } catch (mErr) {
+                console.warn("Migration warning:", mErr);
               }
-              localStorage.setItem(migrationKey, new Date().toISOString());
-            } catch (mErr) {
-              console.warn("Migration warning:", mErr);
             }
           }
-        }
 
-        // 3. Sincronizar datos de Supabase hacia Zustand Store
-        await syncFromSupabase(org.id);
+          // 3. Sincronizar datos de Supabase hacia Zustand Store para administradores
+          await syncFromSupabase(org.id);
+        }
       }
     } catch (err) {
       console.warn("Error loading user profile / org:", err);

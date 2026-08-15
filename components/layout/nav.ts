@@ -3,6 +3,7 @@ import {
   HeartPulse,
   Wallet,
   Users,
+  CalendarCheck,
   ChartColumnBig,
   Upload,
   Settings,
@@ -17,6 +18,7 @@ export interface NavItem {
 
 export const NAV_MAIN: NavItem[] = [
   { href: "/", label: "Inicio", icon: LayoutDashboard },
+  { href: "/clases", label: "Clases", icon: CalendarCheck },
   { href: "/recuperacion", label: "Recuperación", icon: HeartPulse },
   { href: "/cobros", label: "Cobros", icon: Wallet },
   { href: "/alumnos", label: "Alumnos", icon: Users },
