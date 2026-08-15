@@ -113,7 +113,7 @@ export function HistoricalImportsTable({ data }: HistoricalImportsTableProps) {
                   <TableCell className="text-right">
                     {item.tasaRetencion != null ? (
                       <Badge
-                        variant={
+                        tone={
                           item.tasaRetencion >= 90
                             ? "success"
                             : item.tasaRetencion >= 75

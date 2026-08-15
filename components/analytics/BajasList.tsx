@@ -107,7 +107,7 @@ export function BajasList({ bajas }: BajasListProps) {
 
                     <TableCell>
                       <div className="space-y-1">
-                        <Badge variant="danger" className="text-[11px]">
+                        <Badge tone="danger" className="text-[11px]">
                           {b.ultimoEstado}
                         </Badge>
                         {b.ultimoVencimiento && (
