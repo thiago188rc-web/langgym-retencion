@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { isClientRole, isKnownRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
 import { getArgentinaTodayISO } from "@/lib/dates";
 import {
   getAvailableClassesForDate,
@@ -42,15 +43,24 @@ export default function ClientPortalPage() {
 
   const classesRef = useRef<HTMLDivElement>(null);
 
-  // 1. Guard against unauthenticated or admin access
+  // 1. Guard against unauthenticated, admin, or incomplete-profile access.
+  // This portal must only render for a profile explicitly known to be
+  // "cliente" — never as a default for missing/unrecognized roles.
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.replace("/login");
-      } else if (profile && profile.role !== "cliente") {
-        router.replace("/");
-      }
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login");
+    } else if (isClientRole(profile?.role)) {
+      // ok, stays
+    } else if (isKnownRole(profile?.role)) {
+      router.replace("/");
+    } else if (profile) {
+      // Profile loaded but role is missing/unrecognized -> controlled state.
+      router.replace(INCOMPLETE_PROFILE_ROUTE);
     }
+    // profile === null while a user is present and loading is false means
+    // the profile fetch hasn't resolved a row yet; middleware will already
+    // route these cases, so we avoid redirecting on every transient null.
   }, [authLoading, user, profile, router]);
 
   // 2. Fetch user's upcoming reservations

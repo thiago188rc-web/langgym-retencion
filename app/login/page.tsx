@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dumbbell, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { homeForRole } from "@/lib/auth/roleRouting";
 import { Button } from "@/components/ui/Button";
 import { Input, Field } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
@@ -48,17 +49,15 @@ export default function LoginPage() {
       }
 
       if (data?.user) {
-        // Check profile role to redirect to appropriate dashboard
+        // Resolve destination STRICTLY from profiles.role via the shared
+        // roleRouting helper. Missing/unknown roles never fall back to the
+        // admin panel — they go to the controlled "/perfil-pendiente" state.
         const { data: prof } = (await (supabase.from("profiles") as any)
           .select("role")
           .eq("id", data.user.id)
           .single()) as { data: { role: string } | null; error: any };
 
-        if (prof?.role === "cliente") {
-          router.push("/mi-panel");
-        } else {
-          router.push("/");
-        }
+        router.push(homeForRole(prof?.role ?? null));
         router.refresh();
       }
     } catch {

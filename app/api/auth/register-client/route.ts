@@ -187,8 +187,26 @@ export async function POST(request: Request) {
 
     if (profileError) {
       console.error("Error upserting profile:", profileError);
+
+      // Avoid leaving an orphaned auth.users row (account exists, no profile)
+      // when we were the ones who just created it in this request — that
+      // limbo state is exactly what let clients slip into the admin panel
+      // via an unrecognized role. Existing accounts (isExistingAuthUser) are
+      // left untouched since deleting them would destroy a real login.
+      if (!isExistingAuthUser) {
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(userId);
+        } catch (cleanupErr) {
+          console.error("Failed to roll back orphaned auth user:", cleanupErr);
+        }
+      }
+
       return NextResponse.json(
-        { success: false, error: "Error al configurar el perfil de cliente." },
+        {
+          success: false,
+          error: "Error al configurar el perfil de cliente. Por favor reintentá en unos minutos o contactá al gimnasio.",
+          code: profileError.code || "PROFILE_UPSERT_FAILED",
+        },
         { status: 500 },
       );
     }
