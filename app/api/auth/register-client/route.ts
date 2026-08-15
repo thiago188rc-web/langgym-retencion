@@ -52,11 +52,11 @@ export async function POST(request: Request) {
     });
 
     // 3. Resolve Organization securely on the server (never from client request)
-    const { data: orgs, error: orgError } = await supabaseAdmin
+    const { data: orgs, error: orgError } = (await supabaseAdmin
       .from("organizations")
       .select("id, name")
       .order("created_at", { ascending: true })
-      .limit(1);
+      .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
 
     if (orgError || !orgs || orgs.length === 0) {
       console.error("No organization found in database:", orgError);
@@ -103,11 +103,11 @@ export async function POST(request: Request) {
 
     try {
       // Priority 1: Match by exact normalized email
-      const { data: emailMatches } = await supabaseAdmin
+      const { data: emailMatches } = (await supabaseAdmin
         .from("students")
         .select("id")
         .eq("organization_id", targetOrgId)
-        .ilike("email", cleanEmail);
+        .ilike("email", cleanEmail)) as { data: { id: string }[] | null };
 
       if (emailMatches && emailMatches.length === 1) {
         matchedStudentId = emailMatches[0].id;
@@ -115,11 +115,11 @@ export async function POST(request: Request) {
         // Priority 2: If no email match, match by phone digits (last 8 digits) if unique
         if (cleanDigits.length >= 8) {
           const suffix = cleanDigits.slice(-8);
-          const { data: phoneMatches } = await supabaseAdmin
+          const { data: phoneMatches } = (await supabaseAdmin
             .from("students")
             .select("id")
             .eq("organization_id", targetOrgId)
-            .ilike("telefono_raw", `%${suffix}%`);
+            .ilike("telefono_raw", `%${suffix}%`)) as { data: { id: string }[] | null };
 
           if (phoneMatches && phoneMatches.length === 1) {
             matchedStudentId = phoneMatches[0].id;
