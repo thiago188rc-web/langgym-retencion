@@ -68,6 +68,9 @@ export async function POST(request: Request) {
     const targetOrgId = orgs[0].id;
 
     // 4. Create User in Supabase Auth
+    let userId: string | null = null;
+    let isExistingAuthUser = false;
+
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: cleanEmail,
       password: password,
@@ -80,21 +83,65 @@ export async function POST(request: Request) {
     });
 
     if (authError) {
-      console.error("Error creating auth user:", authError);
-      const errMsg = authError.message.toLowerCase();
-      if (errMsg.includes("already registered") || errMsg.includes("user already exists")) {
+      const errMsg = (authError.message || "").toLowerCase();
+      const isAlreadyRegistered =
+        errMsg.includes("already") ||
+        errMsg.includes("exists") ||
+        errMsg.includes("duplicate") ||
+        errMsg.includes("registered");
+
+      if (isAlreadyRegistered) {
+        // Try to find the existing auth user to ensure their profile is properly linked
+        try {
+          const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+          const existingUser = usersData?.users?.find(
+            (u) => u.email?.toLowerCase() === cleanEmail,
+          );
+
+          if (existingUser) {
+            userId = existingUser.id;
+            isExistingAuthUser = true;
+            // Update password & user_metadata in case they are completing registration
+            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+              password: password,
+              user_metadata: {
+                full_name: fullName,
+                phone: cleanPhone,
+                registered_as: "cliente",
+              },
+            });
+          }
+        } catch (listErr) {
+          console.warn("Could not list users during recovery:", listErr);
+        }
+
+        if (!userId) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Ya existe una cuenta con este correo electrónico. Por favor iniciá sesión.",
+              code: "ALREADY_REGISTERED",
+            },
+            { status: 409 },
+          );
+        }
+      } else {
+        console.error("Error creating auth user:", authError);
         return NextResponse.json(
-          { success: false, error: "Ya existe una cuenta con este correo electrónico." },
-          { status: 409 },
+          { success: false, error: "No se pudo registrar la cuenta. Verificá los datos ingresados." },
+          { status: 400 },
         );
       }
-      return NextResponse.json(
-        { success: false, error: "No se pudo registrar la cuenta. Verificá los datos." },
-        { status: 400 },
-      );
+    } else if (authData?.user) {
+      userId = authData.user.id;
     }
 
-    const userId = authData.user.id;
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "No se pudo obtener el identificador de usuario." },
+        { status: 500 },
+      );
+    }
 
     // 5. Check if single unambiguous matching student exists in SIGA students table
     let matchedStudentId: string | null = null;
@@ -141,14 +188,16 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error("Error upserting profile:", profileError);
       return NextResponse.json(
-        { success: false, error: "Error al crear el perfil de cliente." },
+        { success: false, error: "Error al configurar el perfil de cliente." },
         { status: 500 },
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Registro exitoso.",
+      message: isExistingAuthUser
+        ? "Cuenta actualizada e iniciada correctamente."
+        : "Registro exitoso.",
       isLinked: Boolean(matchedStudentId),
       user: {
         id: userId,
@@ -164,4 +213,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
 

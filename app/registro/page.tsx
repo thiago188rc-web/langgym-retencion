@@ -19,6 +19,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
@@ -27,6 +28,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
+    setIsAlreadyRegistered(false);
 
     // Validations
     if (!nombre.trim()) {
@@ -66,6 +68,9 @@ export default function RegisterPage() {
 
       if (!res.ok || !data.success) {
         setErrorMsg(data.error || "No se pudo completar el registro. Verificá los datos.");
+        if (res.status === 409 || data.code === "ALREADY_REGISTERED") {
+          setIsAlreadyRegistered(true);
+        }
         setLoading(false);
         return;
       }
@@ -112,9 +117,21 @@ export default function RegisterPage() {
           <h2 className="mb-5 text-[16px] font-semibold text-fg">Registro de Alumno</h2>
 
           {errorMsg && (
-            <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-danger/25 bg-danger/10 p-3 text-[13px] text-danger">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="mb-4 space-y-2 rounded-xl border border-danger/25 bg-danger/10 p-3 text-[13px] text-danger">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              {isAlreadyRegistered && (
+                <div className="pt-1 pl-6">
+                  <Link
+                    href={`/login?email=${encodeURIComponent(email)}`}
+                    className="inline-flex items-center font-semibold underline hover:opacity-90"
+                  >
+                    Ir a Iniciar Sesión →
+                  </Link>
+                </div>
+              )}
             </div>
           )}
 
