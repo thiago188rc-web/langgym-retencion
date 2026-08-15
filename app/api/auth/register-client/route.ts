@@ -52,8 +52,7 @@ export async function POST(request: Request) {
     });
 
     // 3. Resolve Organization securely on the server (never from client request)
-    const { data: orgs, error: orgError } = (await supabaseAdmin
-      .from("organizations")
+    const { data: orgs, error: orgError } = (await (supabaseAdmin.from("organizations") as any)
       .select("id, name")
       .order("created_at", { ascending: true })
       .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
@@ -103,8 +102,7 @@ export async function POST(request: Request) {
 
     try {
       // Priority 1: Match by exact normalized email
-      const { data: emailMatches } = (await supabaseAdmin
-        .from("students")
+      const { data: emailMatches } = (await (supabaseAdmin.from("students") as any)
         .select("id")
         .eq("organization_id", targetOrgId)
         .ilike("email", cleanEmail)) as { data: { id: string }[] | null };
@@ -115,8 +113,7 @@ export async function POST(request: Request) {
         // Priority 2: If no email match, match by phone digits (last 8 digits) if unique
         if (cleanDigits.length >= 8) {
           const suffix = cleanDigits.slice(-8);
-          const { data: phoneMatches } = (await supabaseAdmin
-            .from("students")
+          const { data: phoneMatches } = (await (supabaseAdmin.from("students") as any)
             .select("id")
             .eq("organization_id", targetOrgId)
             .ilike("telefono_raw", `%${suffix}%`)) as { data: { id: string }[] | null };
@@ -131,7 +128,7 @@ export async function POST(request: Request) {
     }
 
     // 6. Upsert user profile strictly with role = 'cliente'
-    const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
+    const { error: profileError } = await (supabaseAdmin.from("profiles") as any).upsert({
       id: userId,
       organization_id: targetOrgId,
       email: cleanEmail,

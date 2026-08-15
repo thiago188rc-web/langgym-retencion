@@ -527,5 +527,17 @@ export interface Database {
         Returns: Json;
       };
     };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: Database["public"]["Functions"];
+    Enums: {
+      user_role: UserRole;
+      reservation_status: ReservationStatus;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
 }
+
