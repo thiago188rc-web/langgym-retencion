@@ -10,6 +10,7 @@ import { relativeDays } from "@/lib/dates";
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Central de Retención", subtitle: "Qué pasa hoy con tus alumnos" },
+  "/clases": { title: "Gestión de Clases", subtitle: "Horarios, cupos y reservas en tiempo real" },
   "/recuperacion": { title: "Recuperación", subtitle: "Alumnos que dejaron de venir" },
   "/cobros": { title: "Cobros", subtitle: "Cuotas por vencer y vencidas" },
   "/alumnos": { title: "Alumnos", subtitle: "Toda tu base de socios" },

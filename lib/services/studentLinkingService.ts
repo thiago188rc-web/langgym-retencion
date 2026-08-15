@@ -74,13 +74,20 @@ export async function getUnlinkedClientProfiles(): Promise<{
           telefono: emailMatch.telefono,
           matchReason: "email",
         };
-      } else if (cleanDigits.length >= 8) {
-        // Find by phone suffix
-        const suffix = cleanDigits.slice(-8);
-        const phoneMatch = studentList.find(
-          (s) => s.telefono_raw && s.telefono_raw.includes(suffix),
-        );
-        if (phoneMatch) {
+      } else if (cleanDigits.length >= 10) {
+        // Find by normalized phone (minimum 10 digits for complete AR phone with area code)
+        const arIntlPhone = cleanDigits.startsWith("54") ? cleanDigits : `549${cleanDigits.replace(/^0+/, "")}`;
+        const local10 = cleanDigits.slice(-10);
+
+        const phoneMatches = studentList.filter((s) => {
+          if (s.telefono && (s.telefono === arIntlPhone || s.telefono === cleanDigits)) return true;
+          if (s.telefono_raw && s.telefono_raw.replace(/\D/g, "").endsWith(local10)) return true;
+          return false;
+        });
+
+        // Only suggest if unambiguous (single match)
+        if (phoneMatches.length === 1) {
+          const phoneMatch = phoneMatches[0];
           match = {
             studentId: phoneMatch.id,
             idSocio: phoneMatch.id_socio,

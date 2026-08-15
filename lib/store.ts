@@ -22,6 +22,9 @@ import { fetchConfigFromSupabase, saveConfigToSupabase } from "./services/config
 export interface ApplyImportSummary {
   nuevos: number;
   actualizados: number;
+  sinCambios: number;
+  bajasDetectadas: number;
+  permanecen: number;
   recuperadosDetectados: number;
 }
 
@@ -107,12 +110,14 @@ export const useStore = create<AppState>()(
       applyImport: (parsed, archivo, erroresCount) => {
         const now = new Date().toISOString();
         const config = get().config;
-        const existing = new Map(get().students.map((s) => [s.idSocio, s]));
+        const prevStudents = get().students;
+        const existing = new Map(prevStudents.map((s) => [s.idSocio, s]));
         let nuevos = 0;
         let actualizados = 0;
+        let sinCambios = 0;
         let recuperadosDetectados = 0;
 
-        const next: Student[] = [...get().students];
+        const next: Student[] = [...prevStudents];
         const indexById = new Map(next.map((s, i) => [s.idSocio, i]));
 
         for (const p of parsed) {
@@ -145,7 +150,21 @@ export const useStore = create<AppState>()(
             continue;
           }
 
-          actualizados++;
+          const hasChanges =
+            prev.nombre !== p.nombre ||
+            prev.apellido !== (p.apellido || "") ||
+            prev.telefono !== p.telefono ||
+            prev.habilitado !== p.habilitado ||
+            prev.membresia !== p.membresia ||
+            prev.fechaFin !== p.fechaFin ||
+            prev.ultimaAsistencia !== p.ultimaAsistencia;
+
+          if (hasChanges) {
+            actualizados++;
+          } else {
+            sinCambios++;
+          }
+
           const prevAbsent =
             prev.ultimaAsistencia != null &&
             (daysSince(prev.ultimaAsistencia) ?? 0) >= config.diasRiesgo.nivel1;
@@ -207,7 +226,14 @@ export const useStore = create<AppState>()(
         };
 
         set({ students: next, imports: [record, ...get().imports].slice(0, 50), hasData: true });
-        return { nuevos, actualizados, recuperadosDetectados };
+        return {
+          nuevos,
+          actualizados,
+          sinCambios,
+          bajasDetectadas: bajas,
+          permanecen,
+          recuperadosDetectados,
+        };
       },
 
       addFollowUp: async (studentId, data, organizationId) => {

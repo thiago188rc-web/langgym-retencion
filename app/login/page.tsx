@@ -49,15 +49,25 @@ export default function LoginPage() {
 
       if (data?.user) {
         // Check profile role to redirect to appropriate dashboard
-        const { data: prof } = (await (supabase.from("profiles") as any)
-          .select("role")
-          .eq("id", data.user.id)
-          .single()) as { data: { role: string } | null; error: any };
+        let resolvedRole = (data.user.user_metadata?.registered_as === "cliente" ? "cliente" : null) || "cliente";
 
-        if (prof?.role === "cliente") {
-          router.push("/mi-panel");
-        } else {
+        try {
+          const { data: prof } = (await (supabase.from("profiles") as any)
+            .select("role")
+            .eq("id", data.user.id)
+            .single()) as { data: { role: string } | null; error: any };
+
+          if (prof?.role) {
+            resolvedRole = prof.role;
+          }
+        } catch {
+          // Fallback to least-privilege
+        }
+
+        if (["owner", "admin", "staff"].includes(resolvedRole)) {
           router.push("/");
+        } else {
+          router.push("/mi-panel");
         }
         router.refresh();
       }

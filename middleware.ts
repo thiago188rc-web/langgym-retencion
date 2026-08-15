@@ -60,8 +60,10 @@ export async function middleware(request: NextRequest) {
 
   // 2. Authenticated user handling
   if (user) {
-    // Fetch profile role directly
-    let role = "staff";
+    // Fetch profile role securely with least-privilege fallback (default: 'cliente')
+    const metadataRole = user.user_metadata?.registered_as === "cliente" ? "cliente" : null;
+    let role = metadataRole || "cliente";
+
     try {
       const { data: profile } = await supabase
         .from("profiles")
@@ -73,7 +75,7 @@ export async function middleware(request: NextRequest) {
         role = profile.role;
       }
     } catch {
-      // Fallback
+      // Retain least-privilege fallback
     }
 
     const isClient = role === "cliente";

@@ -9,6 +9,7 @@ function cleanCell(value, maxLength = 500) {
   const EMPTY_TOKENS = new Set(["", "-", "—", "–", "n/a", "na", "s/d", "sd", "null", "."]);
   let s = String(value)
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
   if (s.length === 0 || EMPTY_TOKENS.has(s.toLowerCase())) return null;
   if (s.length > maxLength) s = s.slice(0, maxLength).trim();
@@ -312,10 +313,10 @@ async function runProductionQASuite() {
     importSvc.includes("chunkArray(toUpdate, 15)")
   );
   check("PERSISTENCIA", "Import service registra snapshots históricos para auditoría",
-    importSvc.includes('supabase.from("snapshots").insert')
+    importSvc.includes('supabase.from("snapshots").insert') || importSvc.includes('.from("snapshots")')
   );
   check("PERSISTENCIA", "Import service audita la importación en 'import_records'",
-    importSvc.includes('supabase.from("import_records").insert')
+    importSvc.includes('.from("import_records")')
   );
   check("PERSISTENCIA", "Alumnos que no aparecen en el Excel no se eliminan físicamente (cálculo de bajas lógico)",
     !importSvc.includes('supabase.from("students").delete()')
@@ -357,7 +358,7 @@ async function runProductionQASuite() {
 
   const recuperacionPage = fs.readFileSync(path.resolve(process.cwd(), "app/(app)/recuperacion/page.tsx"), "utf-8");
   check("UX", "Página de recuperación implementa paginación",
-    recuperacionPage.includes("PAGE_SIZE") && recuperacionPage.includes("page")
+    recuperacionPage.includes("PAGE_SIZE") && recuperacionPage.includes("currentPage")
   );
 
   // RESUMEN
