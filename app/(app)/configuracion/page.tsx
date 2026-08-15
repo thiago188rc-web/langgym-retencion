@@ -22,7 +22,8 @@ import { useToast } from "@/components/ui/Toast";
 import { VariableToolbar, insertAtCursor } from "@/components/ui/VariableToolbar";
 import { renderTemplate } from "@/lib/whatsapp";
 import { DEFAULT_CONFIG } from "@/lib/config";
-import type { Student } from "@/lib/types";
+import { useAuth } from "@/lib/auth/AuthContext";
+import type { Student, Config } from "@/lib/types";
 
 function Section({
   icon: Icon,
@@ -61,15 +62,15 @@ const SAMPLE_STUDENTS: { id: string; label: string; student: Student }[] = [
       nombre: "Andrés",
       apellido: "Pérez",
       nombreCompleto: "Andrés Pérez",
-      telefono: "5492235670245",
-      telefonoRaw: "2235670245",
+      telefono: "5492235851985",
+      telefonoRaw: "2235851985",
       email: "andres@ejemplo.com",
       habilitado: true,
       idMembresia: "1",
-      membresia: "Pase libre",
-      fechaFin: "2026-08-20",
+      membresia: "Pase Libre",
+      fechaFin: "2026-08-10",
       fechaAlta: "2026-01-10",
-      ultimaAsistencia: "2026-08-01",
+      ultimaAsistencia: "2026-07-28",
       observacion: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -109,9 +110,14 @@ export default function ConfiguracionPage() {
   const updateConfig = useStore((s) => s.updateConfig);
   const reset = useStore((s) => s.reset);
   const push = useToast((s) => s.push);
+  const { organization } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [selectedSample, setSelectedSample] = useState<string>("with-last-name");
+
+  const handleUpdateConfig = (patch: Partial<Config>) => {
+    updateConfig(patch, organization?.id);
+  };
 
   const recTextareaRef = useRef<HTMLTextAreaElement>(null);
   const cobTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -122,7 +128,7 @@ export default function ConfiguracionPage() {
   function onLogo(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
-      updateConfig({ logoDataUrl: reader.result as string });
+      handleUpdateConfig({ logoDataUrl: reader.result as string });
       push("Logo actualizado", "success");
     };
     reader.readAsDataURL(file);
@@ -156,10 +162,10 @@ export default function ConfiguracionPage() {
           />
           <div className="flex-1 space-y-3">
             <Field label="Nombre del gimnasio">
-              <Input value={config.gymName} onChange={(e) => updateConfig({ gymName: e.target.value })} />
+              <Input value={config.gymName} onChange={(e) => handleUpdateConfig({ gymName: e.target.value })} />
             </Field>
             <Field label="Responsable">
-              <Input value={config.ownerName} onChange={(e) => updateConfig({ ownerName: e.target.value })} />
+              <Input value={config.ownerName} onChange={(e) => handleUpdateConfig({ ownerName: e.target.value })} />
             </Field>
           </div>
         </div>
@@ -207,7 +213,7 @@ export default function ConfiguracionPage() {
                 rows={4}
                 value={config.templates.recuperacion}
                 onChange={(e) =>
-                  updateConfig({ templates: { ...config.templates, recuperacion: e.target.value } })
+                  handleUpdateConfig({ templates: { ...config.templates, recuperacion: e.target.value } })
                 }
               />
             </Field>
@@ -218,7 +224,7 @@ export default function ConfiguracionPage() {
                   recTextareaRef.current,
                   tag,
                   config.templates.recuperacion,
-                  (val) => updateConfig({ templates: { ...config.templates, recuperacion: val } }),
+                  (val) => handleUpdateConfig({ templates: { ...config.templates, recuperacion: val } }),
                 )
               }
             />
@@ -244,7 +250,7 @@ export default function ConfiguracionPage() {
                 rows={4}
                 value={config.templates.cobro}
                 onChange={(e) =>
-                  updateConfig({ templates: { ...config.templates, cobro: e.target.value } })
+                  handleUpdateConfig({ templates: { ...config.templates, cobro: e.target.value } })
                 }
               />
             </Field>
@@ -255,7 +261,7 @@ export default function ConfiguracionPage() {
                   cobTextareaRef.current,
                   tag,
                   config.templates.cobro,
-                  (val) => updateConfig({ templates: { ...config.templates, cobro: val } }),
+                  (val) => handleUpdateConfig({ templates: { ...config.templates, cobro: val } }),
                 )
               }
             />
@@ -282,35 +288,43 @@ export default function ConfiguracionPage() {
           <Field label="Nivel 1 (días)">
             <Input
               type="number"
+              min={1}
+              max={365}
               value={config.diasRiesgo.nivel1}
               onChange={(e) =>
-                updateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel1: Number(e.target.value) } })
+                handleUpdateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel1: Math.max(1, Number(e.target.value) || 1) } })
               }
             />
           </Field>
           <Field label="Nivel 2 (días)">
             <Input
               type="number"
+              min={1}
+              max={365}
               value={config.diasRiesgo.nivel2}
               onChange={(e) =>
-                updateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel2: Number(e.target.value) } })
+                handleUpdateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel2: Math.max(1, Number(e.target.value) || 1) } })
               }
             />
           </Field>
           <Field label="Nivel 3 (días)">
             <Input
               type="number"
+              min={1}
+              max={365}
               value={config.diasRiesgo.nivel3}
               onChange={(e) =>
-                updateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel3: Number(e.target.value) } })
+                handleUpdateConfig({ diasRiesgo: { ...config.diasRiesgo, nivel3: Math.max(1, Number(e.target.value) || 1) } })
               }
             />
           </Field>
           <Field label="Por vencer (días)">
             <Input
               type="number"
+              min={1}
+              max={365}
               value={config.porVencerDias}
-              onChange={(e) => updateConfig({ porVencerDias: Number(e.target.value) })}
+              onChange={(e) => handleUpdateConfig({ porVencerDias: Math.max(1, Number(e.target.value) || 1) })}
             />
           </Field>
         </div>
@@ -318,13 +332,13 @@ export default function ConfiguracionPage() {
           <Field label="Código de país" hint="Argentina = 54">
             <Input
               value={config.countryCode}
-              onChange={(e) => updateConfig({ countryCode: e.target.value.replace(/\D/g, "") })}
+              onChange={(e) => handleUpdateConfig({ countryCode: e.target.value.replace(/\D/g, "") })}
             />
           </Field>
           <Field label="Prefijo móvil" hint="Argentina = 9">
             <Input
               value={config.mobilePrefix}
-              onChange={(e) => updateConfig({ mobilePrefix: e.target.value.replace(/\D/g, "") })}
+              onChange={(e) => handleUpdateConfig({ mobilePrefix: e.target.value.replace(/\D/g, "") })}
             />
           </Field>
         </div>
@@ -333,7 +347,7 @@ export default function ConfiguracionPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
-              updateConfig({
+              handleUpdateConfig({
                 diasRiesgo: DEFAULT_CONFIG.diasRiesgo,
                 porVencerDias: DEFAULT_CONFIG.porVencerDias,
                 templates: DEFAULT_CONFIG.templates,

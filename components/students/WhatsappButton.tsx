@@ -1,9 +1,11 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { MessageCircle, PhoneOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { whatsappLink } from "@/lib/whatsapp";
 import type { FollowUpTipo, Student } from "@/lib/types";
 
@@ -22,6 +24,10 @@ export function WhatsappButton({
 }) {
   const addFollowUp = useStore((s) => s.addFollowUp);
   const push = useToast((s) => s.push);
+  const { organization } = useAuth();
+  const [isClicking, setIsClicking] = useState(false);
+  const lockRef = useRef(false);
+
   const link = whatsappLink(student, message);
 
   if (!link) {
@@ -39,20 +45,37 @@ export function WhatsappButton({
     );
   }
 
+  const handleClick = () => {
+    if (lockRef.current) return;
+    lockRef.current = true;
+    setIsClicking(true);
+
+    addFollowUp(
+      student.id,
+      { tipo, canal: "whatsapp", mensaje: message, resultado: "contactado" },
+      organization?.id,
+    );
+    const name = student.nombre || student.nombreCompleto || "el alumno";
+    push(`Mensaje preparado para ${name}`, "success");
+
+    setTimeout(() => {
+      lockRef.current = false;
+      setIsClicking(false);
+    }, 1500);
+  };
+
   return (
     <a
       href={link}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => {
-        addFollowUp(student.id, { tipo, canal: "whatsapp", mensaje: message, resultado: "contactado" });
-        const name = student.nombre || student.nombreCompleto || "el alumno";
-        push(`Mensaje preparado para ${name}`, "success");
-      }}
+      onClick={handleClick}
+      aria-label={`Abrir WhatsApp para contactar a ${student.nombreCompleto || student.nombre || "el alumno"}`}
       className={cn(
         "group inline-flex items-center gap-1.5 rounded-[10px] font-medium text-white",
         "bg-[#1f8f4e] transition-all duration-150 hover:bg-[#22a058] active:scale-[0.98]",
         "shadow-[0_2px_10px_rgba(34,160,88,0.25)] hover:shadow-[0_4px_16px_rgba(34,160,88,0.35)]",
+        isClicking && "opacity-80 pointer-events-none",
         size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-3.5 text-sm",
       )}
     >

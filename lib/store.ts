@@ -15,6 +15,9 @@ import type {
 import { DEFAULT_CONFIG } from "./config";
 import { uid } from "./utils";
 import { daysSince } from "./dates";
+import { fetchStudentsFromSupabase } from "./services/studentsService";
+import { createFollowUpInSupabase, updateFollowUpResultadoInSupabase } from "./services/followUpsService";
+import { fetchConfigFromSupabase, saveConfigToSupabase } from "./services/configService";
 
 export interface ApplyImportSummary {
   nuevos: number;
@@ -27,15 +30,22 @@ interface AppState {
   config: Config;
   imports: ImportRecord[];
   hasData: boolean;
+  isLoadingFromSupabase: boolean;
+  lastSyncError: string | null;
+
+  // Synchronization with Supabase
+  syncFromSupabase: (organizationId: string) => Promise<void>;
 
   applyImport: (parsed: ParsedStudent[], archivo: string, erroresCount: number) => ApplyImportSummary;
+  setSyncedData: (students: Student[], importRecord?: ImportRecord) => void;
   addFollowUp: (
     studentId: string,
     data: { tipo: FollowUpTipo; canal: "whatsapp" | "manual"; mensaje?: string; resultado?: FollowUpResultado },
-  ) => void;
-  setFollowUpResultado: (studentId: string, followUpId: string, resultado: FollowUpResultado) => void;
+    organizationId?: string,
+  ) => Promise<void>;
+  setFollowUpResultado: (studentId: string, followUpId: string, resultado: FollowUpResultado, organizationId?: string) => Promise<void>;
   updateStudent: (studentId: string, patch: Partial<Student>) => void;
-  updateConfig: (patch: Partial<Config>) => void;
+  updateConfig: (patch: Partial<Config>, organizationId?: string) => Promise<void>;
   loadStudents: (students: Student[]) => void;
   reset: () => void;
 }
@@ -57,6 +67,42 @@ export const useStore = create<AppState>()(
       config: DEFAULT_CONFIG,
       imports: [],
       hasData: false,
+      isLoadingFromSupabase: false,
+      lastSyncError: null,
+
+      syncFromSupabase: async (organizationId: string) => {
+        if (!organizationId) return;
+        set({ isLoadingFromSupabase: true, lastSyncError: null });
+
+        try {
+          // 1. Fetch Students, Follow-ups, Snapshots
+          const cloudStudents = await fetchStudentsFromSupabase(organizationId);
+
+          // 2. Fetch Config
+          const cloudConfig = await fetchConfigFromSupabase(organizationId);
+
+          set({
+            students: cloudStudents,
+            config: cloudConfig ? { ...get().config, ...cloudConfig } : get().config,
+            hasData: cloudStudents.length > 0,
+            isLoadingFromSupabase: false,
+          });
+        } catch (err: any) {
+          console.warn("Could not sync from Supabase, relying on local state:", err);
+          set({
+            isLoadingFromSupabase: false,
+            lastSyncError: err?.message || "Error al sincronizar con el servidor",
+          });
+        }
+      },
+
+      setSyncedData: (students: Student[], importRecord?: ImportRecord) => {
+        set({
+          students,
+          hasData: students.length > 0,
+          imports: importRecord ? [importRecord, ...get().imports].slice(0, 50) : get().imports,
+        });
+      },
 
       applyImport: (parsed, archivo, erroresCount) => {
         const now = new Date().toISOString();
@@ -100,7 +146,6 @@ export const useStore = create<AppState>()(
           }
 
           actualizados++;
-          // Detect recovery: previously absent, now attending again, with a pending recovery follow-up.
           const prevAbsent =
             prev.ultimaAsistencia != null &&
             (daysSince(prev.ultimaAsistencia) ?? 0) >= config.diasRiesgo.nivel1;
@@ -140,12 +185,23 @@ export const useStore = create<AppState>()(
           next[idx] = merged;
         }
 
+        const importedSocioSet = new Set(parsed.map((p) => p.idSocio).filter(Boolean));
+        let bajas = 0;
+        if (prevStudents.length > 0) {
+          prevStudents.forEach((s) => {
+            if (!importedSocioSet.has(s.idSocio)) bajas++;
+          });
+        }
+        const permanecen = importedSocioSet.size - nuevos;
+
         const record: ImportRecord = {
           id: uid("imp"),
           fecha: now,
           archivo,
           nuevos,
           actualizados,
+          bajas,
+          permanecen,
           errores: erroresCount,
           total: parsed.length,
         };
@@ -154,23 +210,48 @@ export const useStore = create<AppState>()(
         return { nuevos, actualizados, recuperadosDetectados };
       },
 
-      addFollowUp: (studentId, data) => {
+      addFollowUp: async (studentId, data, organizationId) => {
+        const tempId = uid("fu");
         const followUp: FollowUp = {
-          id: uid("fu"),
+          id: tempId,
           fecha: new Date().toISOString(),
           tipo: data.tipo,
           canal: data.canal,
           mensaje: data.mensaje,
           resultado: data.resultado ?? "contactado",
         };
+
+        // 1. Optimistic local update
         set({
           students: get().students.map((s) =>
             s.id === studentId ? { ...s, followUps: [followUp, ...s.followUps] } : s,
           ),
         });
+
+        // 2. Persist to Supabase if organizationId is present
+        if (organizationId) {
+          try {
+            const res = await createFollowUpInSupabase(organizationId, studentId, followUp);
+            if (res.success && res.id) {
+              // Update with real DB UUID
+              set({
+                students: get().students.map((s) =>
+                  s.id === studentId
+                    ? {
+                        ...s,
+                        followUps: s.followUps.map((f) => (f.id === tempId ? { ...f, id: res.id! } : f)),
+                      }
+                    : s,
+                ),
+              });
+            }
+          } catch (err) {
+            console.error("Error persisting follow up to Supabase:", err);
+          }
+        }
       },
 
-      setFollowUpResultado: (studentId, followUpId, resultado) => {
+      setFollowUpResultado: async (studentId, followUpId, resultado, organizationId) => {
         set({
           students: get().students.map((s) =>
             s.id === studentId
@@ -178,6 +259,14 @@ export const useStore = create<AppState>()(
               : s,
           ),
         });
+
+        if (organizationId) {
+          try {
+            await updateFollowUpResultadoInSupabase(organizationId, followUpId, resultado);
+          } catch (err) {
+            console.error("Error updating follow up in Supabase:", err);
+          }
+        }
       },
 
       updateStudent: (studentId, patch) => {
@@ -188,7 +277,16 @@ export const useStore = create<AppState>()(
         });
       },
 
-      updateConfig: (patch) => set({ config: { ...get().config, ...patch } }),
+      updateConfig: async (patch, organizationId) => {
+        set({ config: { ...get().config, ...patch } });
+        if (organizationId) {
+          try {
+            await saveConfigToSupabase(organizationId, patch);
+          } catch (err) {
+            console.error("Error saving config to Supabase:", err);
+          }
+        }
+      },
 
       loadStudents: (students) =>
         set({

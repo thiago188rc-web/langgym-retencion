@@ -55,6 +55,9 @@ export interface ImportRecord {
   archivo: string;
   nuevos: number;
   actualizados: number;
+  sinCambios?: number;
+  bajas?: number;
+  permanecen?: number;
   errores: number;
   total: number;
 }
@@ -130,4 +133,60 @@ export interface ParsedStudent {
   fechaAlta: string | null;
   ultimaAsistencia: string | null;
   observacion: string | null;
+}
+
+// ----------------------------------------------------
+// Analytics and Retention Types
+// ----------------------------------------------------
+
+export type PeriodFilter =
+  | "este_mes"
+  | "mes_anterior"
+  | "ultimos_3_meses"
+  | "ultimos_6_meses"
+  | "ultimo_ano"
+  | "todo";
+
+export interface PeriodMetric {
+  periodKey: string; // e.g. "2026-08" or import ID
+  label: string; // e.g. "AGO 2026"
+  fecha: string;
+  archivo: string;
+  total: number;
+  altas: number;
+  bajas: number;
+  permanecen: number;
+  neto: number;
+  tasaBaja: number | null; // percentage 0-100
+  tasaRetencion: number | null; // percentage 0-100
+}
+
+export interface BajaStudent {
+  student: Student;
+  idSocio: string;
+  nombreCompleto: string;
+  telefono: string | null;
+  telefonoRaw: string | null;
+  fechaBajaDetectada: string;
+  periodoBaja: string;
+  ultimoEstado: string;
+  ultimaMembresia: string | null;
+  ultimoVencimiento: string | null;
+  diasSinVenir: number | null;
+  ultimoSeguimiento?: FollowUp;
+}
+
+export interface AnalyticsSummary {
+  alumnosActuales: number;
+  altas: number;
+  bajas: number;
+  tasaBaja: number | null;
+  tasaRetencion: number | null;
+  crecimientoNeto: number;
+  totalImportaciones: number;
+  ultimaImportacionFecha: string | null;
+  evolucion: PeriodMetric[];
+  bajasList: BajaStudent[];
+  hasSufficientData: boolean;
+  periodoSeleccionado: PeriodFilter;
 }

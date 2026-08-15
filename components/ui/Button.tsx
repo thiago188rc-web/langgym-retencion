@@ -30,10 +30,11 @@ const sizes: Record<Size, string> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "secondary", size = "md", ...props }, ref) => {
+  ({ className, variant = "secondary", size = "md", type = "button", ...props }, ref) => {
     return (
       <button
         ref={ref}
+        type={type}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap font-medium",
           "transition-all duration-150 ease-out outline-none",

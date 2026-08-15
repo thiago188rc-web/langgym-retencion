@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Upload, Database } from "lucide-react";
+import { Upload, Database, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { relativeDays } from "@/lib/dates";
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
@@ -27,6 +28,7 @@ export function Header() {
   const pathname = usePathname();
   const meta = metaFor(pathname);
   const lastImport = useStore((s) => s.imports[0]);
+  const { user, profile, signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border glass px-6">
@@ -44,12 +46,35 @@ export function Header() {
             </span>
           </div>
         ) : null}
+
         <Link href="/importar">
           <Button variant="primary" size="md">
             <Upload size={16} />
             <span className="hidden sm:inline">Importar Excel</span>
           </Button>
         </Link>
+
+        {user && (
+          <div className="flex items-center gap-2 border-l border-border/80 pl-3">
+            <div className="hidden flex-col text-right lg:flex">
+              <span className="text-[12px] font-medium text-fg truncate max-w-[140px]">
+                {profile?.full_name || user.email}
+              </span>
+              <span className="text-[10px] text-faint uppercase tracking-wider">
+                {profile?.role || "Staff"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+              className="flex size-9 items-center justify-center rounded-xl border border-border bg-card/60 text-muted transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger active:scale-95"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

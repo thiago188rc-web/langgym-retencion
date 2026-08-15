@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -35,10 +36,17 @@ export default function DashboardPage() {
   const students = useStore((s) => s.students);
   const config = useStore((s) => s.config);
 
-  if (students.length === 0) return <NoData />;
+  const m = useMemo(() => {
+    if (students.length === 0) return null;
+    return computeMetrics(students, config);
+  }, [students, config]);
 
-  const m = computeMetrics(students, config);
-  const prioridad = getPrioridadHoy(students, config, 7);
+  const prioridad = useMemo(() => {
+    if (students.length === 0) return [];
+    return getPrioridadHoy(students, config, 7);
+  }, [students, config]);
+
+  if (students.length === 0 || !m) return <NoData />;
 
   return (
     <div className="space-y-8">

@@ -116,6 +116,8 @@ function TimelineItem({
   );
 }
 
+import { useAuth } from "@/lib/auth/AuthContext";
+
 export default function FichaPage() {
   const params = useParams<{ id: string }>();
   const students = useStore((s) => s.students);
@@ -123,6 +125,7 @@ export default function FichaPage() {
   const addFollowUp = useStore((s) => s.addFollowUp);
   const setFollowUpResultado = useStore((s) => s.setFollowUpResultado);
   const push = useToast((s) => s.push);
+  const { organization } = useAuth();
   const [note, setNote] = useState("");
 
   const student = useMemo(() => students.find((s) => s.id === params.id), [students, params.id]);
@@ -369,10 +372,16 @@ export default function FichaPage() {
             <Button
               variant="secondary"
               size="icon"
+              disabled={!note.trim()}
+              aria-label="Agregar nota manual"
               className="h-auto self-stretch"
               onClick={() => {
                 if (!note.trim()) return;
-                addFollowUp(student.id, { tipo: "nota", canal: "manual", mensaje: note.trim(), resultado: "contactado" });
+                addFollowUp(
+                  student.id,
+                  { tipo: "nota", canal: "manual", mensaje: note.trim(), resultado: "contactado" },
+                  organization?.id,
+                );
                 setNote("");
                 push("Nota agregada", "success");
               }}
@@ -395,7 +404,7 @@ export default function FichaPage() {
                   key={fu.id}
                   fu={fu}
                   onResolve={(resultado) => {
-                    setFollowUpResultado(student.id, fu.id, resultado);
+                    setFollowUpResultado(student.id, fu.id, resultado, organization?.id);
                     push(resultado === "recuperado" ? "¡Marcado como recuperado!" : "Actualizado", "success");
                   }}
                 />

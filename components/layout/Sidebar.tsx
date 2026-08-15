@@ -1,22 +1,29 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { NAV_MAIN, NAV_SECONDARY, type NavItem } from "./nav";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { computeMetrics } from "@/lib/retention";
 
 function useCounts() {
   const students = useStore((s) => s.students);
   const config = useStore((s) => s.config);
-  const m = computeMetrics(students, config);
-  return {
-    "/recuperacion": m.ausentes7 + m.ausentes15 + m.ausentes30 + m.ausentes30plus,
-    "/cobros": m.vencidas + m.venceHoy,
-  } as Record<string, number>;
+
+  return useMemo(() => {
+    if (students.length === 0) return {};
+    const m = computeMetrics(students, config);
+    return {
+      "/recuperacion": m.ausentes7 + m.ausentes15 + m.ausentes30 + m.ausentes30plus,
+      "/cobros": m.vencidas + m.venceHoy,
+    } as Record<string, number>;
+  }, [students, config]);
 }
 
 function NavLink({
@@ -74,6 +81,7 @@ function NavLink({
 export function Sidebar() {
   const pathname = usePathname();
   const counts = useCounts();
+  const { user, profile, organization, signOut } = useAuth();
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -84,7 +92,7 @@ export function Sidebar() {
         <Logo />
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-4">
+      <nav aria-label="Navegación principal" className="flex flex-1 flex-col gap-0.5 px-3 pt-4">
         <span className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
           Operación
         </span>
@@ -100,7 +108,30 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-3 pb-4">
+      {/* User profile & Logout Footer */}
+      <div className="px-3 pb-4 space-y-2">
+        {user && (
+          <div className="flex items-center justify-between rounded-[12px] border border-border bg-card/60 p-2.5">
+            <div className="min-w-0 flex-1 pr-2">
+              <div className="truncate text-[12px] font-medium text-fg">
+                {profile?.full_name || user.email}
+              </div>
+              <div className="truncate text-[10px] text-muted">
+                {organization?.name || "Lang Gym"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+              className="flex size-7 items-center justify-center rounded-lg text-faint hover:bg-danger/15 hover:text-danger transition-colors"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+
         <div className="rounded-[12px] border border-border bg-card/60 p-3">
           <p className="text-[12px] leading-relaxed text-muted">
             <span className="font-semibold text-fg">Tip:</span> importá tu Excel de SIGA todas las

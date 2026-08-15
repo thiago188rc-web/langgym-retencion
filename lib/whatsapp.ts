@@ -117,6 +117,11 @@ export function renderTemplate(template: string, student: Student, config: Confi
     // Replace membership
     .replace(/\{\{\s*membresia\s*\}\}|\{\s*membresia\s*\}/gi, membresia);
 
+  // Clean up any stray mustache tags if unknown
+  rendered = rendered
+    .replace(/\{\{\s*[\w.-]+\s*\}\}/g, "")
+    .replace(/\{\s*[\w.-]+\s*\}/g, "");
+
   // Clean up any double spaces that might occur if a missing field (e.g. apellido) left extra whitespace,
   // and fix orphaned spaces before punctuation like "Hola Juan ," -> "Hola Juan,"
   rendered = rendered
@@ -127,7 +132,8 @@ export function renderTemplate(template: string, student: Student, config: Confi
         .replace(/\s+([,.:;!?])/g, "$1")
         .trimEnd(),
     )
-    .join("\n");
+    .join("\n")
+    .trim();
 
   return rendered;
 }
@@ -135,7 +141,9 @@ export function renderTemplate(template: string, student: Student, config: Confi
 /** Build a wa.me deep link that opens WhatsApp with the message pre-filled. */
 export function whatsappLink(student: Student, message: string): string | null {
   if (!student?.telefono) return null;
-  return `https://wa.me/${student.telefono}?text=${encodeURIComponent(message)}`;
+  const sanitizedPhone = student.telefono.replace(/[^\d+]/g, "");
+  if (!sanitizedPhone) return null;
+  return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
 }
 
 export function recuperacionMessage(student: Student, config: Config): string {

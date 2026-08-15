@@ -9,7 +9,10 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  UserCheck,
+  UserMinus,
   UserPlus,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { DropZone } from "./DropZone";
@@ -20,18 +23,22 @@ import { useStore } from "@/lib/store";
 import { useToast } from "@/components/ui/Toast";
 import { parseExcel } from "@/lib/import/parseExcel";
 import { buildDemoStudents } from "@/lib/demo";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { syncExcelImportToSupabase } from "@/lib/services/importService";
 import type { ColumnMapping, ImportError, CanonicalField } from "@/lib/types";
 
 type Phase = "idle" | "processing" | "done";
 
 interface Outcome {
   archivo: string;
+  total: number;
   nuevos: number;
   actualizados: number;
-  errores: ImportError[];
-  total: number;
-  mapping: ColumnMapping;
+  sinCambios: number;
+  bajas: number;
   recuperados: number;
+  errores: ImportError[];
+  mapping: ColumnMapping;
 }
 
 const FIELD_LABELS: Record<CanonicalField, string> = {
@@ -50,11 +57,12 @@ const FIELD_LABELS: Record<CanonicalField, string> = {
 };
 
 const STAGES = [
-  { label: "Leyendo archivo", pct: 12 },
-  { label: "Detectando columnas", pct: 38 },
-  { label: "Analizando alumnos", pct: 68 },
-  { label: "Actualizando base", pct: 92 },
-  { label: "Listo", pct: 100 },
+  { label: "Archivo seleccionado", pct: 15 },
+  { label: "Validando formato y columnas", pct: 35 },
+  { label: "Procesando alumnos", pct: 55 },
+  { label: "Comparando con base histórica", pct: 75 },
+  { label: "Sincronizando en la nube", pct: 90 },
+  { label: "Finalizado", pct: 100 },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -64,56 +72,115 @@ export function ImportFlow() {
   const [stage, setStage] = useState(0);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const applyImport = useStore((s) => s.applyImport);
+  const setSyncedData = useStore((s) => s.setSyncedData);
   const loadStudents = useStore((s) => s.loadStudents);
   const config = useStore((s) => s.config);
   const push = useToast((s) => s.push);
+  const { organization } = useAuth();
+
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+  const ALLOWED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
   async function handleFile(file: File) {
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      push("Formato no compatible. Por favor seleccioná un archivo .xlsx, .xls o .csv", "warning");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      push("El archivo es demasiado grande (máximo 10 MB).", "warning");
+      return;
+    }
+
     setPhase("processing");
-    setStage(0);
+    setStage(0); // 1. Archivo seleccionado
     try {
-      await sleep(450);
-      setStage(1);
+      await sleep(350);
+      setStage(1); // 2. Validando formato y columnas
       const buffer = await file.arrayBuffer();
-      await sleep(450);
+      await sleep(350);
 
       const result = parseExcel(buffer, config);
-      setStage(2);
-      await sleep(550);
+      setStage(2); // 3. Procesando alumnos
+      await sleep(400);
 
       if (result.mapping.missingRequired.length > 0) {
         push("No pudimos reconocer las columnas obligatorias", "warning");
         setOutcome({
           archivo: file.name,
+          total: result.totalFilas,
           nuevos: 0,
           actualizados: 0,
-          errores: result.errores,
-          total: result.totalFilas,
-          mapping: result.mapping,
+          sinCambios: 0,
+          bajas: 0,
           recuperados: 0,
+          errores: result.errores,
+          mapping: result.mapping,
         });
-        setStage(4);
+        setStage(5);
         setPhase("done");
         return;
       }
 
-      setStage(3);
-      const summary = applyImport(result.parsedStudents, file.name, result.errores.length);
-      await sleep(500);
-      setStage(4);
-      await sleep(300);
+      setStage(3); // 4. Comparando con base histórica
+      await sleep(400);
+
+      setStage(4); // 5. Sincronizando en la nube
+
+      let nuevos = 0;
+      let actualizados = 0;
+      let sinCambios = 0;
+      let bajas = 0;
+      let recuperados = 0;
+
+      if (organization?.id) {
+        try {
+          const syncRes = await syncExcelImportToSupabase(
+            organization.id,
+            file.name,
+            result.parsedStudents,
+          );
+          nuevos = syncRes.nuevos;
+          actualizados = syncRes.actualizados;
+          sinCambios = syncRes.sinCambios;
+          bajas = syncRes.bajas;
+          setSyncedData(syncRes.syncedStudents, syncRes.importRecord);
+        } catch {
+          // Fallback safely to optimistic local state without leaking error internals
+          const summary = applyImport(result.parsedStudents, file.name, result.errores.length);
+          nuevos = summary.nuevos;
+          actualizados = summary.actualizados;
+          sinCambios = summary.sinCambios;
+          bajas = summary.bajasDetectadas;
+          recuperados = summary.recuperadosDetectados;
+        }
+      } else {
+        const summary = applyImport(result.parsedStudents, file.name, result.errores.length);
+        nuevos = summary.nuevos;
+        actualizados = summary.actualizados;
+        sinCambios = summary.sinCambios;
+        bajas = summary.bajasDetectadas;
+        recuperados = summary.recuperadosDetectados;
+      }
+
+      await sleep(400);
+      setStage(5); // 6. Finalizado
+      await sleep(250);
 
       setOutcome({
         archivo: file.name,
-        nuevos: summary.nuevos,
-        actualizados: summary.actualizados,
-        errores: result.errores,
         total: result.parsedStudents.length,
+        nuevos,
+        actualizados,
+        sinCambios,
+        bajas,
+        recuperados,
+        errores: result.errores,
         mapping: result.mapping,
-        recuperados: summary.recuperadosDetectados,
       });
       setPhase("done");
-      push(`Importación lista · ${summary.nuevos} nuevos, ${summary.actualizados} actualizados`, "success");
+      push(`Importación lista · ${nuevos} nuevos, ${actualizados} actualizados`, "success");
     } catch {
       push("No pudimos leer el archivo. ¿Es un Excel válido?", "warning");
       setPhase("idle");
@@ -121,16 +188,24 @@ export function ImportFlow() {
   }
 
   function loadDemo() {
+    if (organization?.id) {
+      const confirmDemo = window.confirm(
+        "Estás en una cuenta de producción conectada a Supabase. Cargar datos de ejemplo sobrescribirá la vista local con alumnos ficticios. ¿Deseas continuar?"
+      );
+      if (!confirmDemo) return;
+    }
     loadStudents(buildDemoStudents());
     push("Datos de ejemplo cargados", "success");
     setOutcome({
       archivo: "Datos de ejemplo",
+      total: 20,
       nuevos: 20,
       actualizados: 0,
-      errores: [],
-      total: 20,
-      mapping: { byHeader: {}, byField: {}, unmapped: [], missingRequired: [] },
+      sinCambios: 0,
+      bajas: 0,
       recuperados: 0,
+      errores: [],
+      mapping: { byHeader: {}, byField: {}, unmapped: [], missingRequired: [] },
     });
     setPhase("done");
   }
@@ -178,11 +253,11 @@ export function ImportFlow() {
                 </div>
                 <Progress value={STAGES[stage].pct} />
                 <div className="flex flex-col gap-1.5">
-                  {STAGES.slice(0, 4).map((s, i) => (
+                  {STAGES.map((s, i) => (
                     <div
                       key={s.label}
                       className={`flex items-center gap-2 text-[13px] ${
-                        i < stage ? "text-success" : i === stage ? "text-fg" : "text-faint"
+                        i < stage ? "text-success" : i === stage ? "text-fg font-medium" : "text-faint"
                       }`}
                     >
                       {i < stage ? (
@@ -266,11 +341,13 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
           )}
         </div>
 
-        <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <StatTile icon={<Users size={18} className="text-accent" />} value={outcome.total} label="Procesados" tone="bg-accent/12" />
           <StatTile icon={<UserPlus size={18} className="text-success" />} value={outcome.nuevos} label="Nuevos" tone="bg-success/12" />
           <StatTile icon={<RefreshCw size={18} className="text-info" />} value={outcome.actualizados} label="Actualizados" tone="bg-info/12" />
-          <StatTile icon={<Sparkles size={18} className="text-accent" />} value={outcome.recuperados} label="Recuperados" tone="bg-accent/12" />
-          <StatTile icon={<AlertTriangle size={18} className="text-warning" />} value={outcome.errores.length} label="Errores" tone="bg-warning/12" />
+          <StatTile icon={<UserCheck size={18} className="text-muted" />} value={outcome.sinCambios} label="Sin cambios" tone="bg-white/5" />
+          <StatTile icon={<UserMinus size={18} className="text-warning" />} value={outcome.bajas} label="Bajas/Ausentes" tone="bg-warning/12" />
+          <StatTile icon={<AlertTriangle size={18} className="text-danger" />} value={outcome.errores.length} label="Omitidos (error)" tone="bg-danger/12" />
         </div>
       </Card>
 
@@ -305,7 +382,7 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
       {outcome.errores.length > 0 && (
         <Card className="p-6">
           <h3 className="mb-4 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-warning">
-            <AlertTriangle size={15} /> Errores encontrados ({outcome.errores.length})
+            <AlertTriangle size={15} /> Errores u omisiones ({outcome.errores.length})
           </h3>
           <div className="max-h-60 space-y-2 overflow-y-auto">
             {outcome.errores.slice(0, 50).map((e, i) => (

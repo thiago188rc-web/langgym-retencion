@@ -41,8 +41,9 @@ export function Modal({
           />
           <motion.div
             role="dialog"
-            aria-modal
-            className="relative w-full glass rounded-[18px] border border-border-strong shadow-pop"
+            aria-modal="true"
+            aria-label={title || "Ventana modal"}
+            className="relative w-full glass rounded-[18px] border border-border-strong shadow-pop max-h-[90vh] overflow-y-auto"
             style={{ maxWidth }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -53,7 +54,9 @@ export function Modal({
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <h2 className="text-[15px] font-semibold">{title}</h2>
                 <button
+                  type="button"
                   onClick={onClose}
+                  aria-label="Cerrar modal"
                   className="flex size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.06] hover:text-fg"
                 >
                   <X size={16} />

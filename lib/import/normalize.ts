@@ -3,11 +3,22 @@ import type { Config } from "../types";
 
 const EMPTY_TOKENS = new Set(["", "-", "—", "–", "n/a", "na", "s/d", "sd", "null", "."]);
 
-/** Treat SIGA placeholder values ("-", "", "n/a") as empty. */
-export function cleanCell(value: unknown): string | null {
+/** Treat SIGA placeholder values ("-", "", "n/a") as empty and sanitize input. */
+export function cleanCell(value: unknown, maxLength = 500): string | null {
   if (value == null) return null;
-  const s = String(value).trim();
+  // Convert to string and remove null bytes / non-printable control chars (except standard whitespace)
+  let s = String(value)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+
+  if (s.length === 0) return null;
   if (EMPTY_TOKENS.has(s.toLowerCase())) return null;
+
+  // Bound length to prevent buffer bloat
+  if (s.length > maxLength) {
+    s = s.slice(0, maxLength).trim();
+  }
+
   return s;
 }
 

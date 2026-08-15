@@ -57,7 +57,8 @@ export function todayISO(): string {
 }
 
 function atMidnight(iso: string): number {
-  const [y, m, d] = iso.split("-").map(Number);
+  const clean = iso.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
   return new Date(y, m - 1, d).getTime();
 }
 
@@ -81,8 +82,26 @@ const MONTHS_ES = [
 /** "15 mar 2026" */
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-").map(Number);
+  const clean = iso.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
   return `${d} ${MONTHS_ES[m - 1]} ${y}`;
+}
+
+/** "15/03/2026" */
+export function formatShortDate(iso: string | null): string {
+  if (!iso) return "—";
+  const clean = iso.slice(0, 10);
+  const [y, m, d] = clean.split("-").map(Number);
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+}
+
+/** "Mar 2026" */
+export function formatMonthYear(iso: string | null): string {
+  if (!iso) return "—";
+  const clean = iso.slice(0, 10);
+  const [y, m] = clean.split("-").map(Number);
+  const mName = MONTHS_ES[m - 1] || "";
+  return `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${y}`;
 }
 
 /** "hoy" / "ayer" / "hace 5 días" / "en 3 días" */
