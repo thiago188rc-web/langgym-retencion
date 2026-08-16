@@ -8,6 +8,7 @@ import { MobileNav } from "./MobileNav";
 import { ToastViewport } from "@/components/ui/Toast";
 import { useHydrated } from "@/lib/useHydrated";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { isAdminRole, isClientRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
 
 function BootScreen() {
   return (
@@ -24,16 +25,25 @@ function BootScreen() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
-  const { profile, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const router = useRouter();
 
+  // This layout renders the administrative panel. It must only ever render
+  // for a profile with a known admin role. Clients are sent to /mi-panel,
+  // and authenticated users with a missing/unrecognized profile (never seen
+  // "cliente" here) are sent to the controlled /perfil-pendiente state —
+  // never left inside the admin shell "by default".
   useEffect(() => {
-    if (!loading && profile && profile.role === "cliente") {
+    if (loading) return;
+    if (!user) return; // middleware handles unauthenticated redirects
+    if (isClientRole(profile?.role)) {
       router.replace("/mi-panel");
+    } else if (!isAdminRole(profile?.role)) {
+      router.replace(INCOMPLETE_PROFILE_ROUTE);
     }
-  }, [loading, profile, router]);
+  }, [loading, user, profile, router]);
 
-  if (!hydrated || loading || (profile && profile.role === "cliente")) {
+  if (!hydrated || loading || !isAdminRole(profile?.role)) {
     return <BootScreen />;
   }
 

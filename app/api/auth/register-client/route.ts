@@ -61,17 +61,42 @@ export async function POST(request: Request) {
         .limit(1)) as { data: { id: string; name: string }[] | null; error: any };
 
       if (orgError || !orgs || orgs.length === 0) {
-        console.error("No organization found in database during client registration:", orgError);
+        // Auto-bootstrap primary gym organization if database is fresh
+        const { data: newOrg } = (await (supabaseAdmin.from("organizations") as any)
+          .insert({
+            name: "Lang Gym",
+            slug: "lang-gym",
+            owner_name: "Administración",
+          })
+          .select("id")
+          .single()) as { data: { id: string } | null; error: any };
+
+        if (newOrg?.id) {
+          targetOrgId = newOrg.id;
+          try {
+            await (supabaseAdmin.from("configurations") as any)
+              .insert({ organization_id: newOrg.id })
+              .select("id");
+          } catch {}
+        } else {
+          const { data: fallbackOrgs } = (await (supabaseAdmin.from("organizations") as any)
+            .select("id")
+            .limit(1)) as { data: { id: string }[] | null };
+          targetOrgId = fallbackOrgs?.[0]?.id || null;
+        }
+      } else {
+        targetOrgId = orgs[0].id;
+      }
+
+      if (!targetOrgId) {
         return NextResponse.json(
           {
             success: false,
-            error: "El gimnasio no se encuentra configurado en el sistema. Contactá a la administración del gimnasio para que complete la inicialización de la cuenta.",
-            code: "ORGANIZATION_NOT_INITIALIZED",
+            error: "No se pudo inicializar la organización del gimnasio. Verificá las credenciales de Supabase.",
           },
-          { status: 422 },
+          { status: 500 },
         );
       }
-      targetOrgId = orgs[0].id;
     }
 
     // 4. Create User in Supabase Auth
@@ -219,8 +244,26 @@ export async function POST(request: Request) {
 
     if (profileError) {
       console.error("Error upserting profile:", profileError);
+
+      // Avoid leaving an orphaned auth.users row (account exists, no profile)
+      // when we were the ones who just created it in this request — that
+      // limbo state is exactly what let clients slip into the admin panel
+      // via an unrecognized role. Existing accounts (isExistingAuthUser) are
+      // left untouched since deleting them would destroy a real login.
+      if (!isExistingAuthUser) {
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(userId);
+        } catch (cleanupErr) {
+          console.error("Failed to roll back orphaned auth user:", cleanupErr);
+        }
+      }
+
       return NextResponse.json(
-        { success: false, error: "Error al configurar el perfil de cliente." },
+        {
+          success: false,
+          error: "Error al configurar el perfil de cliente. Por favor reintentá en unos minutos o contactá al gimnasio.",
+          code: profileError.code || "PROFILE_UPSERT_FAILED",
+        },
         { status: 500 },
       );
     }

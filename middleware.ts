@@ -1,5 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  homeForRole,
+  isClientRole,
+  isKnownRole,
+  INCOMPLETE_PROFILE_ROUTE,
+} from "@/lib/auth/roleRouting";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -51,6 +57,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/api/auth");
 
+  const isIncompleteProfileRoute = pathname.startsWith(INCOMPLETE_PROFILE_ROUTE);
+
   // 1. Unauthenticated users trying to access private pages -> redirect to /login
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
@@ -60,9 +68,12 @@ export async function middleware(request: NextRequest) {
 
   // 2. Authenticated user handling
   if (user) {
-    // Fetch profile role securely with least-privilege fallback (default: 'cliente')
-    const metadataRole = user.user_metadata?.registered_as === "cliente" ? "cliente" : null;
-    let role = metadataRole || "cliente";
+    // Fetch the role STRICTLY from profiles.role. There is no safe default:
+    // if the profile row doesn't exist yet, or the query fails, or the role
+    // value is not one of the roles the app understands, `role` stays
+    // null/unrecognized and homeForRole() below routes to the controlled
+    // "/perfil-pendiente" state — NEVER to the admin panel.
+    let role: string | null = null;
 
     try {
       const { data: profile } = await supabase
@@ -71,32 +82,53 @@ export async function middleware(request: NextRequest) {
         .eq("id", user.id)
         .single();
 
-      if (profile?.role) {
-        role = profile.role;
-      }
+      role = profile?.role ?? null;
     } catch {
-      // Retain least-privilege fallback
+      role = null;
     }
 
-    const isClient = role === "cliente";
+    const hasIncompleteProfile = !isKnownRole(role);
+    const isClient = isClientRole(role);
     const isClientRoute = pathname.startsWith("/mi-panel") || pathname.startsWith("/cliente");
+    const destination = homeForRole(role);
 
-    // A. Authenticated user hitting public auth routes -> redirect to respective home
-    if (isPublicRoute && !pathname.startsWith("/reset-password") && !pathname.startsWith("/auth/callback") && !pathname.startsWith("/api/auth")) {
+    // A. Authenticated user with an incomplete/unrecognized profile -> always
+    //    send to the controlled "profile pending" page (except if already there,
+    //    or hitting auth-adjacent routes that must stay reachable to recover).
+    if (
+      hasIncompleteProfile &&
+      !isIncompleteProfileRoute &&
+      !pathname.startsWith("/auth/callback") &&
+      !pathname.startsWith("/api/auth")
+    ) {
       const url = request.nextUrl.clone();
-      url.pathname = isClient ? "/mi-panel" : "/";
+      url.pathname = INCOMPLETE_PROFILE_ROUTE;
       return NextResponse.redirect(url);
     }
 
-    // B. Client trying to access administrative routes -> block and redirect to /mi-panel
-    if (isClient && !isClientRoute && !isPublicRoute) {
+    // B. Authenticated user with a known role hitting public auth routes ->
+    //    redirect to their respective home (login/registro no longer useful to them).
+    if (
+      !hasIncompleteProfile &&
+      isPublicRoute &&
+      !pathname.startsWith("/reset-password") &&
+      !pathname.startsWith("/auth/callback") &&
+      !pathname.startsWith("/api/auth")
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = destination;
+      return NextResponse.redirect(url);
+    }
+
+    // C. Client trying to access administrative routes -> block and redirect to /mi-panel
+    if (isClient && !isClientRoute && !isPublicRoute && !isIncompleteProfileRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/mi-panel";
       return NextResponse.redirect(url);
     }
 
-    // C. Admin/Staff trying to access client-only portal -> redirect to admin dashboard
-    if (!isClient && isClientRoute) {
+    // D. Admin/Staff/Owner trying to access the client-only portal -> redirect to admin dashboard
+    if (!hasIncompleteProfile && !isClient && isClientRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       return NextResponse.redirect(url);
