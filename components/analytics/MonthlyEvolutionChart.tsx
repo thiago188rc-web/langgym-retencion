@@ -255,15 +255,21 @@ export function MonthlyEvolutionChart({ data }: MonthlyEvolutionChartProps) {
                   {d.label}
                 </text>
 
-                {/* Invisible hit area for hover */}
+                {/* Invisible hit area for hover (mouse) and tap (touch) */}
                 <rect
                   x={x - 25}
                   y={paddingTop}
                   width={50}
                   height={chartHeight - paddingTop - paddingBottom}
                   fill="transparent"
+                  className="cursor-pointer"
                   onMouseEnter={() => setHoveredIdx(i)}
                   onMouseLeave={() => setHoveredIdx(null)}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    setHoveredIdx((prev) => (prev === i ? null : i));
+                  }}
+                  onClick={() => setHoveredIdx((prev) => (prev === i ? null : i))}
                 />
               </g>
             );
