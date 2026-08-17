@@ -31,8 +31,19 @@ import { ClassAttendeesModal } from "@/components/admin/classes/ClassAttendeesMo
 import { EditCapacityModal } from "@/components/admin/classes/EditCapacityModal";
 import { ManualBookingModal } from "@/components/admin/classes/ManualBookingModal";
 import { ScheduleManagementModal } from "@/components/admin/classes/ScheduleManagementModal";
+import { PendingEnrollmentsSection } from "@/components/admin/classes/PendingEnrollmentsSection";
+import { ActiveEnrollmentsSection } from "@/components/admin/classes/ActiveEnrollmentsSection";
 import { Modal } from "@/components/ui/Modal";
 import { useToast, ToastViewport } from "@/components/ui/Toast";
+import {
+  getPendingEnrollmentRequests,
+  approveClassEnrollment,
+  rejectClassEnrollment,
+  getActiveEnrollments,
+  cancelClassEnrollment,
+  type PendingEnrollmentRequest,
+  type ActiveEnrollment,
+} from "@/lib/services/adminEnrollmentService";
 
 const DAYS_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MONTHS_ES = [
@@ -89,6 +100,14 @@ export default function AdminClassesPage() {
   const [attendeeToCancel, setAttendeeToCancel] = useState<ClassAttendee | null>(null);
   const [cancelling, setCancelling] = useState<boolean>(false);
 
+  // Pending Turno Requests state
+  const [pendingRequests, setPendingRequests] = useState<PendingEnrollmentRequest[]>([]);
+  const [loadingPendingRequests, setLoadingPendingRequests] = useState<boolean>(true);
+
+  // Active Turnos state
+  const [activeEnrollments, setActiveEnrollments] = useState<ActiveEnrollment[]>([]);
+  const [loadingActiveEnrollments, setLoadingActiveEnrollments] = useState<boolean>(true);
+
   // 1. Fetch Classes for selected Date
   const fetchClasses = useCallback(async (dateISO: string) => {
     setLoadingClasses(true);
@@ -115,10 +134,75 @@ export default function AdminClassesPage() {
     setLoadingAttendees(false);
   }, [toast]);
 
+  // Fetch Pending Turno Requests
+  const fetchPendingRequests = useCallback(async () => {
+    setLoadingPendingRequests(true);
+    const { data, error } = await getPendingEnrollmentRequests();
+    if (error) {
+      toast.push(error, "danger");
+    }
+    setPendingRequests(data);
+    setLoadingPendingRequests(false);
+  }, [toast]);
+
+  // Fetch Active Turnos
+  const fetchActiveEnrollments = useCallback(async () => {
+    setLoadingActiveEnrollments(true);
+    const { data, error } = await getActiveEnrollments();
+    if (error) {
+      toast.push(error, "danger");
+    }
+    setActiveEnrollments(data);
+    setLoadingActiveEnrollments(false);
+  }, [toast]);
+
   // Initial and Date-change trigger
   useEffect(() => {
     fetchClasses(selectedDate);
   }, [selectedDate, fetchClasses]);
+
+  useEffect(() => {
+    fetchPendingRequests();
+    fetchActiveEnrollments();
+  }, [fetchPendingRequests, fetchActiveEnrollments]);
+
+  // Handle Approve/Reject Turno Requests
+  const handleApproveEnrollment = async (enrollmentId: string) => {
+    const res = await approveClassEnrollment(enrollmentId);
+    if (res.success) {
+      toast.push(
+        `Turno aceptado. Se generaron ${res.reservationsGenerated ?? 0} reservas para las próximas semanas.`,
+        "success",
+      );
+      await Promise.all([fetchPendingRequests(), fetchActiveEnrollments(), fetchClasses(selectedDate)]);
+    } else {
+      toast.push(res.error || "No se pudo aceptar el turno.", "danger");
+    }
+  };
+
+  const handleRejectEnrollment = async (enrollmentId: string) => {
+    const res = await rejectClassEnrollment(enrollmentId);
+    if (res.success) {
+      toast.push("Solicitud de turno rechazada.", "info");
+      await fetchPendingRequests();
+    } else {
+      toast.push(res.error || "No se pudo rechazar la solicitud.", "danger");
+    }
+  };
+
+  // Handle Cancel Active Turno
+  const handleCancelActiveEnrollment = async (enrollmentId: string) => {
+    const res = await cancelClassEnrollment(enrollmentId);
+    if (res.success) {
+      toast.push(
+        `Turno liberado. Se cancelaron ${res.reservationsCancelled ?? 0} reservas futuras.`,
+        "info",
+      );
+      await Promise.all([fetchActiveEnrollments(), fetchClasses(selectedDate)]);
+    } else {
+      toast.push(res.error || "No se pudo liberar el turno.", "danger");
+    }
+  };
 
   // Handle Attendees Click
   const handleOpenAttendees = (classItem: AdminClassItem) => {
@@ -363,6 +447,21 @@ export default function AdminClassesPage() {
           />
         </div>
       </div>
+
+      {/* Pending Turno Requests */}
+      <PendingEnrollmentsSection
+        requests={pendingRequests}
+        loading={loadingPendingRequests}
+        onApprove={handleApproveEnrollment}
+        onReject={handleRejectEnrollment}
+      />
+
+      {/* Active Turnos (collapsible) */}
+      <ActiveEnrollmentsSection
+        enrollments={activeEnrollments}
+        loading={loadingActiveEnrollments}
+        onCancel={handleCancelActiveEnrollment}
+      />
 
       {/* Day Metrics Overview */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

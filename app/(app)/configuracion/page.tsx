@@ -167,6 +167,14 @@ export default function ConfiguracionPage() {
             <Field label="Responsable">
               <Input value={config.ownerName} onChange={(e) => handleUpdateConfig({ ownerName: e.target.value })} />
             </Field>
+            <Field label="WhatsApp del owner (para pedidos de cambio de turno)">
+              <Input
+                type="tel"
+                placeholder="5491122334455"
+                value={config.ownerWhatsapp}
+                onChange={(e) => handleUpdateConfig({ ownerWhatsapp: e.target.value.replace(/[^\d+]/g, "") })}
+              />
+            </Field>
           </div>
         </div>
       </Section>

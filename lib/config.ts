@@ -18,6 +18,7 @@ export const DEFAULT_CONFIG: Config = {
   logoDataUrl: null,
   countryCode: "54",
   mobilePrefix: "9",
+  ownerWhatsapp: "",
   diasRiesgo: { nivel1: 7, nivel2: 15, nivel3: 30 },
   porVencerDias: 7,
   templates: {
