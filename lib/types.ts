@@ -73,6 +73,7 @@ export interface Config {
   logoDataUrl: string | null;
   countryCode: string; // "54"
   mobilePrefix: string; // "9" for AR mobiles, "" to disable
+  ownerWhatsapp: string; // owner's WhatsApp number (digits, no "+"), used for turno change requests
   diasRiesgo: { nivel1: number; nivel2: number; nivel3: number }; // 7 / 15 / 30
   porVencerDias: number; // window for "por vencer"
   templates: WhatsappTemplates;

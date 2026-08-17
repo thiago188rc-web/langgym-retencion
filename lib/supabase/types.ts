@@ -8,6 +8,7 @@ export type Json =
 
 export type UserRole = "owner" | "admin" | "staff" | "cliente";
 export type ReservationStatus = "confirmed" | "cancelled" | "attended" | "no_show";
+export type EnrollmentStatus = "pending" | "active" | "rejected" | "cancelled";
 
 export interface Database {
   public: {
@@ -21,6 +22,7 @@ export interface Database {
           logo_url: string | null;
           country_code: string;
           mobile_prefix: string;
+          owner_whatsapp: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -32,6 +34,7 @@ export interface Database {
           logo_url?: string | null;
           country_code?: string;
           mobile_prefix?: string;
+          owner_whatsapp?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -43,6 +46,7 @@ export interface Database {
           logo_url?: string | null;
           country_code?: string;
           mobile_prefix?: string;
+          owner_whatsapp?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -410,6 +414,53 @@ export interface Database {
           notes?: string | null;
         };
       };
+      class_enrollments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          user_id: string;
+          student_id: string | null;
+          class_schedule_id: string;
+          class_type_id: string;
+          status: EnrollmentStatus;
+          requested_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision_notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          user_id: string;
+          student_id?: string | null;
+          class_schedule_id: string;
+          class_type_id: string;
+          status?: EnrollmentStatus;
+          requested_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          user_id?: string;
+          student_id?: string | null;
+          class_schedule_id?: string;
+          class_type_id?: string;
+          status?: EnrollmentStatus;
+          requested_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Functions: {
       book_class: {
@@ -526,14 +577,108 @@ export interface Database {
         };
         Returns: Json;
       };
+      request_class_enrollment: {
+        Args: {
+          p_schedule_id: string;
+        };
+        Returns: Json;
+      };
+      cancel_my_enrollment_request: {
+        Args: {
+          p_enrollment_id: string;
+        };
+        Returns: Json;
+      };
+      get_pending_enrollment_requests: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          enrollment_id: string;
+          user_id: string;
+          profile_full_name: string | null;
+          profile_email: string | null;
+          profile_phone: string | null;
+          student_id: string | null;
+          student_id_socio: string | null;
+          student_nombre_completo: string | null;
+          student_habilitado: boolean | null;
+          student_fecha_fin: string | null;
+          class_schedule_id: string;
+          class_type_id: string;
+          class_name: string;
+          class_color: string;
+          day_of_week: number;
+          start_time: string;
+          requested_at: string;
+        }>;
+      };
+      approve_class_enrollment: {
+        Args: {
+          p_enrollment_id: string;
+          p_weeks_ahead?: number;
+        };
+        Returns: Json;
+      };
+      reject_class_enrollment: {
+        Args: {
+          p_enrollment_id: string;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      cancel_class_enrollment: {
+        Args: {
+          p_enrollment_id: string;
+        };
+        Returns: Json;
+      };
+      get_active_enrollments: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          enrollment_id: string;
+          user_id: string;
+          profile_full_name: string | null;
+          profile_phone: string | null;
+          student_id_socio: string | null;
+          class_schedule_id: string;
+          class_name: string;
+          class_color: string;
+          day_of_week: number;
+          start_time: string;
+          decided_at: string | null;
+        }>;
+      };
+      get_available_class_schedules: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          schedule_id: string;
+          class_type_id: string;
+          class_name: string;
+          class_description: string | null;
+          class_color: string;
+          day_of_week: number;
+          start_time: string;
+          end_time: string | null;
+          capacity: number | null;
+          active_enrollments: number;
+          available_spots: number | null;
+        }>;
+      };
     };
     Views: {
       [_ in never]: never;
     };
+    // NOTE: this self-reference is redundant with the `Functions` block above
+    // and TypeScript flags it as a duplicate identifier — that's a pre-existing
+    // issue (predates this feature). Removing it makes `Functions` resolve
+    // strictly, which reveals a structural mismatch with the installed
+    // @supabase/supabase-js version's `.rpc()` generic across every call site
+    // in the app (not just this file). Left as-is to avoid a much larger,
+    // unrelated type-alignment pass; `next build` does not depend on it.
     Functions: Database["public"]["Functions"];
     Enums: {
       user_role: UserRole;
       reservation_status: ReservationStatus;
+      enrollment_status: EnrollmentStatus;
     };
     CompositeTypes: {
       [_ in never]: never;

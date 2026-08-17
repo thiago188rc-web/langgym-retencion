@@ -17,7 +17,7 @@ export async function fetchConfigFromSupabase(organizationId: string): Promise<C
   // Fetch gym name / branding from organization
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, owner_name, logo_url, country_code, mobile_prefix")
+    .select("name, owner_name, logo_url, country_code, mobile_prefix, owner_whatsapp")
     .eq("id", organizationId)
     .single();
 
@@ -27,6 +27,7 @@ export async function fetchConfigFromSupabase(organizationId: string): Promise<C
     logoDataUrl: org?.logo_url || null,
     countryCode: org?.country_code || "54",
     mobilePrefix: org?.mobile_prefix || "9",
+    ownerWhatsapp: org?.owner_whatsapp || "",
     diasRiesgo: {
       nivel1: data.dias_riesgo_nivel1,
       nivel2: data.dias_riesgo_nivel2,
@@ -78,6 +79,7 @@ export async function saveConfigToSupabase(
   if (config.logoDataUrl !== undefined) orgUpdates.logo_url = config.logoDataUrl;
   if (config.countryCode !== undefined) orgUpdates.country_code = config.countryCode;
   if (config.mobilePrefix !== undefined) orgUpdates.mobile_prefix = config.mobilePrefix;
+  if (config.ownerWhatsapp !== undefined) orgUpdates.owner_whatsapp = config.ownerWhatsapp;
 
   if (Object.keys(orgUpdates).length > 0) {
     const { error: orgErr } = await supabase

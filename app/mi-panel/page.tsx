@@ -4,19 +4,24 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isClientRole, isKnownRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
-import { getArgentinaTodayISO } from "@/lib/dates";
 import {
-  getAvailableClassesForDate,
   getMyReservations,
-  bookClass,
   cancelReservation,
-  type AvailableClass,
   type UserReservationItem,
 } from "@/lib/services/bookingService";
+import {
+  getAvailableClassSchedules,
+  getMyEnrollment,
+  requestClassEnrollment,
+  cancelMyEnrollmentRequest,
+  buildTurnoChangeWhatsappLink,
+  type AvailableSchedule,
+  type MyEnrollment,
+} from "@/lib/services/enrollmentService";
 import { ClientHeader } from "@/components/client/ClientHeader";
-import { DateSelector } from "@/components/client/DateSelector";
 import { UpcomingReservations } from "@/components/client/UpcomingReservations";
-import { AvailableClassesList } from "@/components/client/AvailableClassesList";
+import { TurnoStatusCard } from "@/components/client/TurnoStatusCard";
+import { TurnoRequestList } from "@/components/client/TurnoRequestList";
 import { ProfileModal } from "@/components/client/ProfileModal";
 import { CancelConfirmationModal } from "@/components/client/CancelConfirmationModal";
 import { useToast, ToastViewport } from "@/components/ui/Toast";
@@ -27,21 +32,24 @@ export default function ClientPortalPage() {
   const router = useRouter();
   const toast = useToast();
 
-  const [selectedDate, setSelectedDate] = useState<string>(getArgentinaTodayISO());
   const [upcomingReservations, setUpcomingReservations] = useState<UserReservationItem[]>([]);
   const [loadingReservations, setLoadingReservations] = useState(true);
 
-  const [availableClasses, setAvailableClasses] = useState<AvailableClass[]>([]);
-  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [myEnrollment, setMyEnrollment] = useState<MyEnrollment | null>(null);
+  const [loadingEnrollment, setLoadingEnrollment] = useState(true);
+  const [cancellingRequest, setCancellingRequest] = useState(false);
 
-  const [bookingScheduleId, setBookingScheduleId] = useState<string | null>(null);
+  const [availableSchedules, setAvailableSchedules] = useState<AvailableSchedule[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
+  const [requestingScheduleId, setRequestingScheduleId] = useState<string | null>(null);
+
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [reservationToCancel, setReservationToCancel] = useState<UserReservationItem | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  const classesRef = useRef<HTMLDivElement>(null);
+  const turnoSectionRef = useRef<HTMLDivElement>(null);
 
   // 1. Guard against unauthenticated, admin, or incomplete-profile access.
   // This portal must only render for a profile explicitly known to be
@@ -63,7 +71,7 @@ export default function ClientPortalPage() {
     // route these cases, so we avoid redirecting on every transient null.
   }, [authLoading, user, profile, router]);
 
-  // 2. Fetch user's upcoming reservations
+  // 2. Fetch user's upcoming (already-approved) reservations
   const fetchReservations = useCallback(async () => {
     setLoadingReservations(true);
     const { data, error } = await getMyReservations({ filter: "upcoming" });
@@ -73,128 +81,96 @@ export default function ClientPortalPage() {
     setLoadingReservations(false);
   }, []);
 
-  // 3. Fetch available classes for selected date
-  const fetchClassesForDate = useCallback(async (dateISO: string) => {
-    setLoadingClasses(true);
-    const { data, error } = await getAvailableClassesForDate(dateISO);
-    if (!error && data) {
-      setAvailableClasses(data);
-    } else if (error) {
-      toast.push(error, "danger");
-      setAvailableClasses([]);
-    }
-    setLoadingClasses(false);
+  // 3. Fetch the client's current turno request/assignment
+  const fetchEnrollment = useCallback(async () => {
+    setLoadingEnrollment(true);
+    const { data } = await getMyEnrollment();
+    setMyEnrollment(data && (data.status === "pending" || data.status === "active") ? data : null);
+    setLoadingEnrollment(false);
+  }, []);
+
+  // 4. Fetch schedules available to request a turno for
+  const fetchSchedules = useCallback(async () => {
+    setLoadingSchedules(true);
+    const { data, error } = await getAvailableClassSchedules();
+    if (error) toast.push(error, "danger");
+    setAvailableSchedules(data);
+    setLoadingSchedules(false);
   }, [toast]);
 
   // Initial load
   useEffect(() => {
     if (user && profile?.role === "cliente") {
       fetchReservations();
+      fetchEnrollment();
     }
-  }, [user, profile, fetchReservations]);
+  }, [user, profile, fetchReservations, fetchEnrollment]);
 
+  // Only load the schedule picker once we know the client has no active/pending turno
   useEffect(() => {
-    if (user && profile?.role === "cliente") {
-      fetchClassesForDate(selectedDate);
+    if (user && profile?.role === "cliente" && !loadingEnrollment && !myEnrollment) {
+      fetchSchedules();
     }
-  }, [user, profile, selectedDate, fetchClassesForDate]);
+  }, [user, profile, loadingEnrollment, myEnrollment, fetchSchedules]);
 
-  // 4. Booking Handler
-  const handleBook = async (classItem: AvailableClass) => {
-    setBookingScheduleId(classItem.scheduleId);
-
+  // 5. Request a turno
+  const handleRequestTurno = async (schedule: AvailableSchedule) => {
+    setRequestingScheduleId(schedule.scheduleId);
     try {
-      const res = await bookClass(classItem.scheduleId, selectedDate);
-
+      const res = await requestClassEnrollment(schedule.scheduleId);
       if (res.success) {
         toast.push(
-          `¡Listo! Reservaste ${res.className || classItem.className} para las ${res.startTime || classItem.startTime} hs.`,
+          `¡Solicitud enviada! Te avisamos cuando el staff confirme tu turno de ${schedule.className}.`,
           "success",
         );
-        // Refresh both list and active reservations
-        await Promise.all([fetchReservations(), fetchClassesForDate(selectedDate)]);
+        await fetchEnrollment();
       } else {
-        // Concurrency / business logic feedback
-        toast.push(res.error || "No se pudo realizar la reserva.", "danger");
-        // Always refresh live availability
-        await fetchClassesForDate(selectedDate);
+        toast.push(res.error || "No se pudo enviar la solicitud.", "danger");
       }
     } catch {
       toast.push("Ocurrió un error inesperado al conectar.", "danger");
-      await fetchClassesForDate(selectedDate);
     } finally {
-      setBookingScheduleId(null);
+      setRequestingScheduleId(null);
     }
   };
 
-  // 5. Cancel Click from Upcoming Card
+  // 6. Cancel a still-pending turno request
+  const handleCancelRequest = async () => {
+    if (!myEnrollment) return;
+    setCancellingRequest(true);
+    try {
+      const res = await cancelMyEnrollmentRequest(myEnrollment.id);
+      if (res.success) {
+        toast.push("Solicitud cancelada.", "info");
+        setMyEnrollment(null);
+        await fetchSchedules();
+      } else {
+        toast.push(res.error || "No se pudo cancelar la solicitud.", "danger");
+      }
+    } finally {
+      setCancellingRequest(false);
+    }
+  };
+
+  // 7. Cancel Click from Upcoming Card
   const handleOpenCancelFromUpcoming = (res: UserReservationItem) => {
     setReservationToCancel(res);
     setCancelModalOpen(true);
   };
 
-  // 6. Cancel Click from Available Class Card (already booked)
-  const handleOpenCancelFromClass = (classItem: AvailableClass) => {
-    const matching = upcomingReservations.find(
-      (r) => r.classScheduleId === classItem.scheduleId && r.classDate === selectedDate,
-    );
-    if (matching) {
-      setReservationToCancel(matching);
-      setCancelModalOpen(true);
-    } else {
-      // Find or construct fallback
-      const fallbackItem: UserReservationItem = {
-        id: "",
-        classScheduleId: classItem.scheduleId,
-        classTypeId: classItem.classTypeId,
-        className: classItem.className,
-        classDescription: classItem.classDescription,
-        classColor: classItem.classColor,
-        classDate: selectedDate,
-        startTime: classItem.startTime,
-        endTime: classItem.endTime,
-        status: "confirmed",
-        createdAt: new Date().toISOString(),
-        cancelledAt: null,
-      };
-      setReservationToCancel(fallbackItem);
-      setCancelModalOpen(true);
-    }
-  };
-
-  // 7. Execute Cancellation
+  // 8. Execute Cancellation of a single scheduled occurrence
   const handleConfirmCancel = async () => {
     if (!reservationToCancel) return;
     setCancelling(true);
 
     try {
-      let targetReservationId = reservationToCancel.id;
-
-      // If ID is missing, lookup from latest reservations
-      if (!targetReservationId) {
-        const { data } = await getMyReservations({ filter: "upcoming" });
-        const found = data?.find(
-          (r) =>
-            r.classScheduleId === reservationToCancel.classScheduleId &&
-            r.classDate === reservationToCancel.classDate,
-        );
-        if (found) targetReservationId = found.id;
-      }
-
-      if (!targetReservationId) {
-        toast.push("No se encontró la reserva a cancelar.", "danger");
-        setCancelModalOpen(false);
-        setCancelling(false);
-        return;
-      }
-
-      const res = await cancelReservation(targetReservationId);
+      const res = await cancelReservation(reservationToCancel.id);
 
       if (res.success) {
         toast.push("Reserva cancelada correctamente.", "info");
         setCancelModalOpen(false);
         setReservationToCancel(null);
-        await Promise.all([fetchReservations(), fetchClassesForDate(selectedDate)]);
+        await fetchReservations();
       } else {
         toast.push(res.error || "No se pudo cancelar la reserva.", "danger");
       }
@@ -206,7 +182,7 @@ export default function ClientPortalPage() {
   };
 
   const handleExploreClasses = () => {
-    classesRef.current?.scrollIntoView({ behavior: "smooth" });
+    turnoSectionRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   if (authLoading || !profile) {
@@ -223,6 +199,13 @@ export default function ClientPortalPage() {
   }
 
   const displayName = profile.full_name || "Alumno";
+  const whatsappLink = myEnrollment
+    ? buildTurnoChangeWhatsappLink(organization?.owner_whatsapp, displayName, {
+        className: myEnrollment.className,
+        dayOfWeek: myEnrollment.dayOfWeek,
+        startTime: myEnrollment.startTime,
+      })
+    : null;
 
   return (
     <div className="min-h-dvh bg-bg text-fg pb-16">
@@ -263,7 +246,7 @@ export default function ClientPortalPage() {
           </div>
         )}
 
-        {/* 1. Upcoming active reservations */}
+        {/* 1. Upcoming approved class dates */}
         <UpcomingReservations
           reservations={upcomingReservations}
           loading={loadingReservations}
@@ -271,23 +254,28 @@ export default function ClientPortalPage() {
           onExploreClick={handleExploreClasses}
         />
 
-        {/* 2. Date Picker */}
-        <div ref={classesRef} className="pt-2">
-          <DateSelector
-            selectedDate={selectedDate}
-            onSelectDate={(iso) => setSelectedDate(iso)}
-          />
+        {/* 2. Turno status (pending/active) or request picker */}
+        <div ref={turnoSectionRef} className="pt-2">
+          {loadingEnrollment ? (
+            <div className="rounded-2xl border border-border bg-card/40 p-8 flex justify-center items-center">
+              <span className="text-xs text-muted animate-pulse">Consultando tu turno…</span>
+            </div>
+          ) : myEnrollment ? (
+            <TurnoStatusCard
+              enrollment={myEnrollment}
+              whatsappLink={whatsappLink}
+              cancelling={cancellingRequest}
+              onCancelRequest={handleCancelRequest}
+            />
+          ) : (
+            <TurnoRequestList
+              schedules={availableSchedules}
+              loading={loadingSchedules}
+              requestingScheduleId={requestingScheduleId}
+              onRequestClick={handleRequestTurno}
+            />
+          )}
         </div>
-
-        {/* 3. Available Classes List */}
-        <AvailableClassesList
-          selectedDate={selectedDate}
-          classes={availableClasses}
-          loading={loadingClasses}
-          bookingScheduleId={bookingScheduleId}
-          onBookClick={handleBook}
-          onCancelReservedClick={handleOpenCancelFromClass}
-        />
       </main>
 
       {/* Modals & Portals */}
