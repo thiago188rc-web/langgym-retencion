@@ -33,17 +33,23 @@ import { ManualBookingModal } from "@/components/admin/classes/ManualBookingModa
 import { ScheduleManagementModal } from "@/components/admin/classes/ScheduleManagementModal";
 import { PendingEnrollmentsSection } from "@/components/admin/classes/PendingEnrollmentsSection";
 import { ActiveEnrollmentsSection } from "@/components/admin/classes/ActiveEnrollmentsSection";
+import { AssignTurnoModal } from "@/components/admin/classes/AssignTurnoModal";
 import { Modal } from "@/components/ui/Modal";
 import { useToast, ToastViewport } from "@/components/ui/Toast";
 import {
   getPendingEnrollmentRequests,
   approveClassEnrollment,
+  approveClassEnrollmentsBulk,
   rejectClassEnrollment,
   getActiveEnrollments,
   cancelClassEnrollment,
+  getClientProfilesForAssignment,
+  assignEnrollment,
   type PendingEnrollmentRequest,
   type ActiveEnrollment,
+  type ClientProfileForAssignment,
 } from "@/lib/services/adminEnrollmentService";
+import { getAvailableClassSchedules, type AvailableSchedule } from "@/lib/services/enrollmentService";
 
 const DAYS_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MONTHS_ES = [
@@ -107,6 +113,13 @@ export default function AdminClassesPage() {
   // Active Turnos state
   const [activeEnrollments, setActiveEnrollments] = useState<ActiveEnrollment[]>([]);
   const [loadingActiveEnrollments, setLoadingActiveEnrollments] = useState<boolean>(true);
+
+  // Assign Turno Modal state
+  const [assignModalOpen, setAssignModalOpen] = useState<boolean>(false);
+  const [assignClients, setAssignClients] = useState<ClientProfileForAssignment[]>([]);
+  const [assignSchedules, setAssignSchedules] = useState<AvailableSchedule[]>([]);
+  const [loadingAssignData, setLoadingAssignData] = useState<boolean>(false);
+  const [assigning, setAssigning] = useState<boolean>(false);
 
   // 1. Fetch Classes for selected Date
   const fetchClasses = useCallback(async (dateISO: string) => {
@@ -180,6 +193,19 @@ export default function AdminClassesPage() {
     }
   };
 
+  const handleApproveAllEnrollments = async (enrollmentIds: string[]) => {
+    const res = await approveClassEnrollmentsBulk(enrollmentIds);
+    if (res.success) {
+      toast.push(
+        `${res.approvedCount ?? 0} turnos aceptados. Se generaron ${res.reservationsGenerated ?? 0} reservas para las próximas semanas.`,
+        "success",
+      );
+      await Promise.all([fetchPendingRequests(), fetchActiveEnrollments(), fetchClasses(selectedDate)]);
+    } else {
+      toast.push(res.error || "No se pudieron aceptar los turnos.", "danger");
+    }
+  };
+
   const handleRejectEnrollment = async (enrollmentId: string) => {
     const res = await rejectClassEnrollment(enrollmentId);
     if (res.success) {
@@ -201,6 +227,38 @@ export default function AdminClassesPage() {
       await Promise.all([fetchActiveEnrollments(), fetchClasses(selectedDate)]);
     } else {
       toast.push(res.error || "No se pudo liberar el turno.", "danger");
+    }
+  };
+
+  // Handle Assign Turno Modal Open
+  const handleOpenAssignModal = async () => {
+    setAssignModalOpen(true);
+    setLoadingAssignData(true);
+    const [clientsRes, schedulesRes] = await Promise.all([
+      getClientProfilesForAssignment(),
+      getAvailableClassSchedules(),
+    ]);
+    setAssignClients(clientsRes.data);
+    setAssignSchedules(schedulesRes.data);
+    setLoadingAssignData(false);
+  };
+
+  // Handle Direct Turno Assignment (resolves a WhatsApp change request)
+  const handleAssignEnrollment = async (userId: string, scheduleId: string) => {
+    setAssigning(true);
+    try {
+      const res = await assignEnrollment(userId, scheduleId);
+      if (res.success) {
+        toast.push(
+          `Turno asignado. Se generaron ${res.reservationsGenerated ?? 0} reservas para las próximas semanas.`,
+          "success",
+        );
+        await Promise.all([fetchActiveEnrollments(), fetchClasses(selectedDate)]);
+      } else {
+        toast.push(res.error || "No se pudo asignar el turno.", "danger");
+      }
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -371,6 +429,15 @@ export default function AdminClassesPage() {
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
+            onClick={handleOpenAssignModal}
+            className="flex items-center gap-2 rounded-xl border border-border bg-card/80 px-3.5 py-2 text-xs font-semibold text-fg shadow-xs hover:border-white/20 hover:bg-card transition-all active:scale-95"
+          >
+            <Plus size={14} className="text-accent" />
+            <span>Asignar Turno</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenScheduleManagement}
             className="flex items-center gap-2 rounded-xl border border-border bg-card/80 px-3.5 py-2 text-xs font-semibold text-fg shadow-xs hover:border-white/20 hover:bg-card transition-all active:scale-95"
           >
@@ -454,6 +521,7 @@ export default function AdminClassesPage() {
         loading={loadingPendingRequests}
         onApprove={handleApproveEnrollment}
         onReject={handleRejectEnrollment}
+        onApproveAll={handleApproveAllEnrollments}
       />
 
       {/* Active Turnos (collapsible) */}
@@ -628,6 +696,17 @@ export default function AdminClassesPage() {
           </div>
         </div>
       </Modal>
+
+      {/* 6. Modal: Assign Turno Directly */}
+      <AssignTurnoModal
+        open={assignModalOpen}
+        clients={assignClients}
+        schedules={assignSchedules}
+        loading={loadingAssignData}
+        submitting={assigning}
+        onClose={() => setAssignModalOpen(false)}
+        onAssign={handleAssignEnrollment}
+      />
 
       <ToastViewport />
     </div>

@@ -11,8 +11,8 @@ import {
 } from "@/lib/services/bookingService";
 import {
   getAvailableClassSchedules,
-  getMyEnrollment,
-  requestClassEnrollment,
+  getMyEnrollments,
+  requestClassEnrollments,
   cancelMyEnrollmentRequest,
   buildTurnoChangeWhatsappLink,
   type AvailableSchedule,
@@ -35,13 +35,13 @@ export default function ClientPortalPage() {
   const [upcomingReservations, setUpcomingReservations] = useState<UserReservationItem[]>([]);
   const [loadingReservations, setLoadingReservations] = useState(true);
 
-  const [myEnrollment, setMyEnrollment] = useState<MyEnrollment | null>(null);
+  const [myEnrollments, setMyEnrollments] = useState<MyEnrollment[]>([]);
   const [loadingEnrollment, setLoadingEnrollment] = useState(true);
-  const [cancellingRequest, setCancellingRequest] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const [availableSchedules, setAvailableSchedules] = useState<AvailableSchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(true);
-  const [requestingScheduleId, setRequestingScheduleId] = useState<string | null>(null);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
 
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
@@ -81,11 +81,11 @@ export default function ClientPortalPage() {
     setLoadingReservations(false);
   }, []);
 
-  // 3. Fetch the client's current turno request/assignment
-  const fetchEnrollment = useCallback(async () => {
+  // 3. Fetch the client's current turno requests/assignments (can be several: one per day)
+  const fetchEnrollments = useCallback(async () => {
     setLoadingEnrollment(true);
-    const { data } = await getMyEnrollment();
-    setMyEnrollment(data && (data.status === "pending" || data.status === "active") ? data : null);
+    const { data } = await getMyEnrollments();
+    setMyEnrollments(data);
     setLoadingEnrollment(false);
   }, []);
 
@@ -102,53 +102,50 @@ export default function ClientPortalPage() {
   useEffect(() => {
     if (user && profile?.role === "cliente") {
       fetchReservations();
-      fetchEnrollment();
+      fetchEnrollments();
     }
-  }, [user, profile, fetchReservations, fetchEnrollment]);
+  }, [user, profile, fetchReservations, fetchEnrollments]);
 
-  // Only load the schedule picker once we know the client has no active/pending turno
+  // Only load the schedule picker once we know the client has no active/pending turno yet
   useEffect(() => {
-    if (user && profile?.role === "cliente" && !loadingEnrollment && !myEnrollment) {
+    if (user && profile?.role === "cliente" && !loadingEnrollment && myEnrollments.length === 0) {
       fetchSchedules();
     }
-  }, [user, profile, loadingEnrollment, myEnrollment, fetchSchedules]);
+  }, [user, profile, loadingEnrollment, myEnrollments, fetchSchedules]);
 
-  // 5. Request a turno
-  const handleRequestTurno = async (schedule: AvailableSchedule) => {
-    setRequestingScheduleId(schedule.scheduleId);
+  // 5. Confirm the weekly schedule selection — by only once (see request_class_enrollments_bulk)
+  const handleConfirmSchedules = async (scheduleIds: string[]) => {
+    if (scheduleIds.length === 0) return;
+    setSubmittingRequest(true);
     try {
-      const res = await requestClassEnrollment(schedule.scheduleId);
+      const res = await requestClassEnrollments(scheduleIds);
       if (res.success) {
-        toast.push(
-          `¡Solicitud enviada! Te avisamos cuando el staff confirme tu turno de ${schedule.className}.`,
-          "success",
-        );
-        await fetchEnrollment();
+        toast.push("¡Horarios anotados! Te avisamos cuando el staff confirme tu pago.", "success");
+        await fetchEnrollments();
       } else {
         toast.push(res.error || "No se pudo enviar la solicitud.", "danger");
       }
     } catch {
       toast.push("Ocurrió un error inesperado al conectar.", "danger");
     } finally {
-      setRequestingScheduleId(null);
+      setSubmittingRequest(false);
     }
   };
 
   // 6. Cancel a still-pending turno request
-  const handleCancelRequest = async () => {
-    if (!myEnrollment) return;
-    setCancellingRequest(true);
+  const handleCancelRequest = async (enrollmentId: string) => {
+    setCancellingId(enrollmentId);
     try {
-      const res = await cancelMyEnrollmentRequest(myEnrollment.id);
+      const res = await cancelMyEnrollmentRequest(enrollmentId);
       if (res.success) {
         toast.push("Solicitud cancelada.", "info");
-        setMyEnrollment(null);
+        await fetchEnrollments();
         await fetchSchedules();
       } else {
         toast.push(res.error || "No se pudo cancelar la solicitud.", "danger");
       }
     } finally {
-      setCancellingRequest(false);
+      setCancellingId(null);
     }
   };
 
@@ -199,13 +196,16 @@ export default function ClientPortalPage() {
   }
 
   const displayName = profile.full_name || "Alumno";
-  const whatsappLink = myEnrollment
-    ? buildTurnoChangeWhatsappLink(organization?.owner_whatsapp, displayName, {
-        className: myEnrollment.className,
-        dayOfWeek: myEnrollment.dayOfWeek,
-        startTime: myEnrollment.startTime,
-      })
-    : null;
+  const activeEnrollments = myEnrollments.filter((e) => e.status === "active");
+  const whatsappLink = buildTurnoChangeWhatsappLink(
+    organization?.owner_whatsapp,
+    displayName,
+    activeEnrollments.map((e) => ({
+      className: e.className,
+      dayOfWeek: e.dayOfWeek,
+      startTime: e.startTime,
+    })),
+  );
 
   return (
     <div className="min-h-dvh bg-bg text-fg pb-16">
@@ -260,19 +260,19 @@ export default function ClientPortalPage() {
             <div className="rounded-2xl border border-border bg-card/40 p-8 flex justify-center items-center">
               <span className="text-xs text-muted animate-pulse">Consultando tu turno…</span>
             </div>
-          ) : myEnrollment ? (
+          ) : myEnrollments.length > 0 ? (
             <TurnoStatusCard
-              enrollment={myEnrollment}
+              enrollments={myEnrollments}
               whatsappLink={whatsappLink}
-              cancelling={cancellingRequest}
+              cancellingId={cancellingId}
               onCancelRequest={handleCancelRequest}
             />
           ) : (
             <TurnoRequestList
               schedules={availableSchedules}
               loading={loadingSchedules}
-              requestingScheduleId={requestingScheduleId}
-              onRequestClick={handleRequestTurno}
+              submitting={submittingRequest}
+              onConfirm={handleConfirmSchedules}
             />
           )}
         </div>

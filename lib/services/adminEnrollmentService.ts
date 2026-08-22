@@ -106,6 +106,42 @@ export async function approveClassEnrollment(enrollmentId: string): Promise<Enro
   }
 }
 
+/** 2b. Approve several pending requests at once (e.g. all of one student's days). */
+export async function approveClassEnrollmentsBulk(enrollmentIds: string[]): Promise<{
+  success: boolean;
+  error?: string;
+  approvedCount?: number;
+  failedCount?: number;
+  reservationsGenerated?: number;
+}> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("approve_class_enrollments_bulk", {
+      p_enrollment_ids: enrollmentIds,
+    });
+
+    if (error) {
+      console.error("Error approving enrollments in bulk:", error);
+      return { success: false, error: error.message || "No se pudieron aprobar las solicitudes." };
+    }
+
+    const res = data as any;
+    if (!res?.success) {
+      return { success: false, error: res?.error || "No se pudieron aprobar las solicitudes." };
+    }
+
+    return {
+      success: true,
+      approvedCount: res.approved_count,
+      failedCount: res.failed_count,
+      reservationsGenerated: res.reservations_generated,
+    };
+  } catch (err: any) {
+    console.error("Unexpected error in approveClassEnrollmentsBulk:", err);
+    return { success: false, error: "Error inesperado al aprobar las solicitudes." };
+  }
+}
+
 /** 3. Reject a pending request. */
 export async function rejectClassEnrollment(
   enrollmentId: string,
@@ -203,5 +239,79 @@ export async function cancelClassEnrollment(enrollmentId: string): Promise<Enrol
   } catch (err: any) {
     console.error("Unexpected error in cancelClassEnrollment:", err);
     return { success: false, error: "Error inesperado al cancelar el turno." };
+  }
+}
+
+export interface ClientProfileForAssignment {
+  userId: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  idSocio: string | null;
+}
+
+/**
+ * 6. List client (cliente) accounts to search from when assigning a turno
+ * directly (used to resolve WhatsApp change requests, since the student can't
+ * self-request again once they've done their one-time weekly selection).
+ */
+export async function getClientProfilesForAssignment(): Promise<{
+  data: ClientProfileForAssignment[];
+  error: string | null;
+}> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, students ( id_socio )")
+      .eq("role", "cliente")
+      .order("full_name", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching client profiles:", error);
+      return { data: [], error: "No se pudieron cargar los alumnos." };
+    }
+
+    const items: ClientProfileForAssignment[] = (data || []).map((row: any) => ({
+      userId: row.id,
+      fullName: row.full_name || row.email || "Alumno",
+      email: row.email,
+      phone: row.phone,
+      idSocio: row.students?.id_socio ?? null,
+    }));
+
+    return { data: items, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in getClientProfilesForAssignment:", err);
+    return { data: [], error: "Error inesperado al cargar los alumnos." };
+  }
+}
+
+/** 7. Assign a turno directly to a client (skips 'pending' — for resolving WhatsApp change requests). */
+export async function assignEnrollment(
+  userId: string,
+  scheduleId: string,
+): Promise<EnrollmentDecisionResponse> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("admin_assign_enrollment", {
+      p_user_id: userId,
+      p_schedule_id: scheduleId,
+    });
+
+    if (error) {
+      console.error("Error assigning enrollment:", error);
+      return { success: false, error: error.message || "No se pudo asignar el turno." };
+    }
+
+    const res = data as any;
+    if (!res?.success) {
+      return { success: false, error: res?.error || "No se pudo asignar el turno." };
+    }
+
+    return { success: true, reservationsGenerated: res.reservations_generated };
+  } catch (err: any) {
+    console.error("Unexpected error in assignEnrollment:", err);
+    return { success: false, error: "Error inesperado al asignar el turno." };
   }
 }

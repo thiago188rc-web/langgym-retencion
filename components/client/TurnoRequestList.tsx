@@ -1,24 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
-import { Clock, Users, Loader2, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Clock, Users, Loader2, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { dayName, type AvailableSchedule } from "@/lib/services/enrollmentService";
+import { ConfirmEnrollmentModal } from "@/components/client/ConfirmEnrollmentModal";
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Monday-first display order
 
 export function TurnoRequestList({
   schedules,
   loading,
-  requestingScheduleId,
-  onRequestClick,
+  submitting,
+  onConfirm,
 }: {
   schedules: AvailableSchedule[];
   loading: boolean;
-  requestingScheduleId: string | null;
-  onRequestClick: (schedule: AvailableSchedule) => void;
+  submitting: boolean;
+  onConfirm: (scheduleIds: string[]) => Promise<void>;
 }) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+
   const groupedByDay = useMemo(() => {
     const map = new Map<number, AvailableSchedule[]>();
     for (const s of schedules) {
@@ -29,12 +33,33 @@ export function TurnoRequestList({
     return DAY_ORDER.map((day) => ({ day, items: map.get(day) || [] })).filter((g) => g.items.length > 0);
   }, [schedules]);
 
+  const selectedSchedules = useMemo(
+    () => schedules.filter((s) => selectedIds.includes(s.scheduleId)),
+    [schedules, selectedIds],
+  );
+
+  const toggleSelection = (schedule: AvailableSchedule) => {
+    if (schedule.isFull) return;
+    setSelectedIds((prev) =>
+      prev.includes(schedule.scheduleId)
+        ? prev.filter((id) => id !== schedule.scheduleId)
+        : [...prev, schedule.scheduleId],
+    );
+  };
+
+  const handleFinalConfirm = async () => {
+    await onConfirm(selectedIds);
+    setConfirmModalOpen(false);
+    setSelectedIds([]);
+  };
+
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 pb-20">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-bold tracking-tight text-fg">Elegí tu turno semanal</h2>
+        <h2 className="text-xl font-bold tracking-tight text-fg">Elegí tus horarios semanales</h2>
         <p className="text-xs text-muted">
-          Vas a tener este horario fijo todas las semanas una vez que el staff confirme tu pago.
+          Todas las actividades son libres de lunes a sábado: elegí tantos días como quieras (uno, tres, seis...).
+          Vas a tener estos horarios fijos todas las semanas una vez que el staff confirme tu pago.
         </p>
       </div>
 
@@ -59,11 +84,20 @@ export function TurnoRequestList({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {items.map((sch) => {
-                  const isRequesting = requestingScheduleId === sch.scheduleId;
+                  const isSelected = selectedIds.includes(sch.scheduleId);
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={sch.scheduleId}
-                      className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card/90 p-4 shadow-sm backdrop-blur-md transition-all hover:border-border-strong"
+                      onClick={() => toggleSelection(sch)}
+                      disabled={sch.isFull}
+                      className={`relative flex flex-col justify-between overflow-hidden rounded-2xl border p-4 shadow-sm backdrop-blur-md text-left transition-all ${
+                        sch.isFull
+                          ? "border-border bg-card/40 opacity-60 cursor-not-allowed"
+                          : isSelected
+                            ? "border-accent bg-accent/10 ring-1 ring-accent"
+                            : "border-border bg-card/90 hover:border-border-strong"
+                      }`}
                     >
                       <div className="absolute top-0 left-0 bottom-0 w-1.5" style={{ backgroundColor: sch.classColor }} />
 
@@ -76,13 +110,13 @@ export function TurnoRequestList({
                             )}
                           </div>
 
-                          {sch.isPendingCapacity ? (
-                            <Badge tone="info">A confirmar</Badge>
-                          ) : sch.isFull ? (
-                            <Badge tone="neutral">Sin cupos</Badge>
-                          ) : (
-                            <Badge tone="accent">{sch.availableSpots} libres</Badge>
-                          )}
+                          <span
+                            className={`flex size-6 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                              isSelected ? "border-accent bg-accent text-white" : "border-border bg-bg/60 text-transparent"
+                            }`}
+                          >
+                            <CheckCircle2 size={14} />
+                          </span>
                         </div>
 
                         <div className="flex items-center gap-3 text-xs text-muted">
@@ -90,7 +124,11 @@ export function TurnoRequestList({
                             <Clock size={13} className="text-accent shrink-0" />
                             {sch.startTime} hs
                           </span>
-                          {!sch.isPendingCapacity && (
+                          {sch.isPendingCapacity ? (
+                            <Badge tone="info">A confirmar</Badge>
+                          ) : sch.isFull ? (
+                            <Badge tone="neutral">Sin cupos</Badge>
+                          ) : (
                             <span className="flex items-center gap-1.5">
                               <Users size={13} className="text-faint shrink-0" />
                               {sch.activeEnrollments} / {sch.capacity}
@@ -98,29 +136,7 @@ export function TurnoRequestList({
                           )}
                         </div>
                       </div>
-
-                      <div className="pt-3 mt-3 border-t border-border/50 pl-1.5">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => onRequestClick(sch)}
-                          disabled={isRequesting || Boolean(requestingScheduleId)}
-                          className="w-full justify-center text-xs gap-2"
-                        >
-                          {isRequesting ? (
-                            <>
-                              <Loader2 size={14} className="animate-spin" />
-                              Enviando…
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles size={14} />
-                              Solicitar este turno
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -128,6 +144,34 @@ export function TurnoRequestList({
           ))}
         </div>
       )}
+
+      {/* Sticky confirm bar */}
+      {selectedIds.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg/95 backdrop-blur-md px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-fg">
+              {selectedIds.length} {selectedIds.length === 1 ? "horario seleccionado" : "horarios seleccionados"}
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setConfirmModalOpen(true)}
+              disabled={submitting}
+              className="text-xs"
+            >
+              Confirmar mis horarios
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmEnrollmentModal
+        open={confirmModalOpen}
+        schedules={selectedSchedules}
+        submitting={submitting}
+        onClose={() => setConfirmModalOpen(false)}
+        onConfirm={handleFinalConfirm}
+      />
     </section>
   );
 }
