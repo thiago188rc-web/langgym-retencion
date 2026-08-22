@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import type { NormalizedStudent } from "@/lib/import/types";
-import type { Student, ImportRecord } from "@/lib/types";
+import type { Student, ImportRecord, CanonicalField } from "@/lib/types";
 import { mapRowToStudent } from "./studentsService";
 
 export interface SyncImportResult {
@@ -28,6 +28,29 @@ export async function syncExcelImportToSupabase(
   organizationId: string,
   fileName: string,
   importedList: NormalizedStudent[],
+  /**
+   * Canonical fields the source file actually had a recognized column for
+   * (result.mapping.byField from parseExcel). Any optional field NOT in this
+   * set means "this import has no information about it" — for students that
+   * already exist, that value must be PRESERVED, never overwritten with
+   * null. Without this, re-importing a file that's missing (or fails to
+   * recognize) e.g. the vencimiento column would silently wipe every
+   * existing student's real fecha_fin.
+   */
+  presentFields: Set<CanonicalField> = new Set([
+    "idSocio",
+    "nombre",
+    "habilitado",
+    "idMembresia",
+    "membresia",
+    "fechaFin",
+    "fechaAlta",
+    "ultimaAsistencia",
+    "email",
+    "telefono",
+    "celular",
+    "observacion",
+  ]),
 ): Promise<SyncImportResult> {
   const supabase = createClient();
   const {
@@ -37,7 +60,9 @@ export async function syncExcelImportToSupabase(
   // 1. Fetch current students in DB to build lookup map by id_socio
   const { data: existingRows, error: fetchErr } = await supabase
     .from("students")
-    .select("id, id_socio, nombre, apellido, telefono, habilitado, membresia, fecha_fin, ultima_asistencia")
+    .select(
+      "id, id_socio, nombre, apellido, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
+    )
     .eq("organization_id", organizationId);
 
   if (fetchErr) {
@@ -131,18 +156,35 @@ export async function syncExcelImportToSupabase(
         observacion: item.observacion,
       });
     } else {
-      // Alumno que ya existía (Permanencia / Actualización)
-      const finDate = item.fechaFin ? new Date(item.fechaFin).toISOString() : null;
-      const asistDate = item.ultimaAsistencia ? new Date(item.ultimaAsistencia).toISOString() : null;
+      // Alumno que ya existía (Permanencia / Actualización).
+      // For any optional field this import doesn't have a recognized column
+      // for, keep the alumno's existing value instead of overwriting it with
+      // null — the absence of a column means "no info", not "clear this".
+      const hasTelefonoCol = presentFields.has("telefono") || presentFields.has("celular");
+      const telefono = hasTelefonoCol ? item.telefono : existing.telefono;
+      const habilitado = presentFields.has("habilitado") ? item.habilitado : existing.habilitado;
+      const membresia = presentFields.has("membresia") ? item.membresia : existing.membresia;
+      const finDate = presentFields.has("fechaFin")
+        ? item.fechaFin
+          ? new Date(item.fechaFin).toISOString()
+          : null
+        : existing.fecha_fin;
+      const asistDate = presentFields.has("ultimaAsistencia")
+        ? item.ultimaAsistencia
+          ? new Date(item.ultimaAsistencia).toISOString()
+          : null
+        : existing.ultima_asistencia;
 
       const hasChanges =
         existing.nombre !== item.nombre ||
         existing.apellido !== (item.apellido || "") ||
-        existing.telefono !== item.telefono ||
-        existing.habilitado !== item.habilitado ||
-        existing.membresia !== item.membresia ||
-        (existing.fecha_fin ? existing.fecha_fin.slice(0, 10) : null) !== (item.fechaFin || null) ||
-        (existing.ultima_asistencia ? existing.ultima_asistencia.slice(0, 10) : null) !== (item.ultimaAsistencia || null);
+        existing.telefono !== telefono ||
+        existing.habilitado !== habilitado ||
+        existing.membresia !== membresia ||
+        (presentFields.has("fechaFin") &&
+          (existing.fecha_fin ? existing.fecha_fin.slice(0, 10) : null) !== (item.fechaFin || null)) ||
+        (presentFields.has("ultimaAsistencia") &&
+          (existing.ultima_asistencia ? existing.ultima_asistencia.slice(0, 10) : null) !== (item.ultimaAsistencia || null));
 
       if (hasChanges) {
         actualizadosCount++;
@@ -152,16 +194,20 @@ export async function syncExcelImportToSupabase(
             nombre: item.nombre,
             apellido: item.apellido || "",
             nombre_completo: item.nombreCompleto,
-            telefono: item.telefono,
-            telefono_raw: item.telefonoRaw,
-            email: item.email,
-            habilitado: item.habilitado,
-            id_membresia: item.idMembresia,
-            membresia: item.membresia,
+            telefono,
+            telefono_raw: hasTelefonoCol ? item.telefonoRaw : existing.telefono_raw,
+            email: presentFields.has("email") ? item.email : existing.email,
+            habilitado,
+            id_membresia: presentFields.has("idMembresia") ? item.idMembresia : existing.id_membresia,
+            membresia,
             fecha_fin: finDate,
-            fecha_alta: item.fechaAlta ? new Date(item.fechaAlta).toISOString() : null,
+            fecha_alta: presentFields.has("fechaAlta")
+              ? item.fechaAlta
+                ? new Date(item.fechaAlta).toISOString()
+                : null
+              : existing.fecha_alta,
             ultima_asistencia: asistDate,
-            observacion: item.observacion,
+            observacion: presentFields.has("observacion") ? item.observacion : existing.observacion,
           },
         });
       } else {
@@ -175,8 +221,8 @@ export async function syncExcelImportToSupabase(
         fecha: todayIso,
         fecha_fin: finDate,
         ultima_asistencia: asistDate,
-        membresia: item.membresia,
-        habilitado: item.habilitado,
+        membresia,
+        habilitado,
       });
     }
   }

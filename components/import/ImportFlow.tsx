@@ -39,6 +39,8 @@ interface Outcome {
   recuperados: number;
   errores: ImportError[];
   mapping: ColumnMapping;
+  headerless?: boolean;
+  unmappedSamples?: Record<string, string[]>;
 }
 
 const FIELD_LABELS: Record<CanonicalField, string> = {
@@ -117,6 +119,8 @@ export function ImportFlow() {
           recuperados: 0,
           errores: result.errores,
           mapping: result.mapping,
+          headerless: result.headerless,
+          unmappedSamples: result.unmappedSamples,
         });
         setStage(5);
         setPhase("done");
@@ -136,10 +140,12 @@ export function ImportFlow() {
 
       if (organization?.id) {
         try {
+          const presentFields = new Set(Object.keys(result.mapping.byField) as CanonicalField[]);
           const syncRes = await syncExcelImportToSupabase(
             organization.id,
             file.name,
             result.parsedStudents,
+            presentFields,
           );
           nuevos = syncRes.nuevos;
           actualizados = syncRes.actualizados;
@@ -178,6 +184,8 @@ export function ImportFlow() {
         recuperados,
         errores: result.errores,
         mapping: result.mapping,
+        headerless: result.headerless,
+        unmappedSamples: result.unmappedSamples,
       });
       setPhase("done");
       push(`Importación lista · ${nuevos} nuevos, ${actualizados} actualizados`, "success");
@@ -316,6 +324,7 @@ function StatTile({
 function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: () => void }) {
   const failed = outcome.mapping.missingRequired.length > 0;
   const mappedFields = Object.entries(outcome.mapping.byField) as [CanonicalField, string][];
+  const samples = outcome.unmappedSamples || {};
 
   return (
     <>
@@ -326,7 +335,7 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
           </div>
           <div className="flex-1">
             <h2 className="text-[17px] font-semibold">
-              {failed ? "Revisá el archivo" : "Importación completada"}
+              {failed ? "No pudimos leer este archivo" : "Importación completada"}
             </h2>
             <p className="text-sm text-muted">
               {outcome.archivo} · {outcome.total} registros procesados
@@ -341,15 +350,26 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
           )}
         </div>
 
-        <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <StatTile icon={<Users size={18} className="text-accent" />} value={outcome.total} label="Procesados" tone="bg-accent/12" />
-          <StatTile icon={<UserPlus size={18} className="text-success" />} value={outcome.nuevos} label="Nuevos" tone="bg-success/12" />
-          <StatTile icon={<RefreshCw size={18} className="text-info" />} value={outcome.actualizados} label="Actualizados" tone="bg-info/12" />
-          <StatTile icon={<UserCheck size={18} className="text-muted" />} value={outcome.sinCambios} label="Sin cambios" tone="bg-white/5" />
-          <StatTile icon={<UserMinus size={18} className="text-warning" />} value={outcome.bajas} label="Bajas/Ausentes" tone="bg-warning/12" />
-          <StatTile icon={<AlertTriangle size={18} className="text-danger" />} value={outcome.errores.length} label="Omitidos (error)" tone="bg-danger/12" />
-        </div>
+        {!failed && (
+          <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <StatTile icon={<Users size={18} className="text-accent" />} value={outcome.total} label="Procesados" tone="bg-accent/12" />
+            <StatTile icon={<UserPlus size={18} className="text-success" />} value={outcome.nuevos} label="Nuevos" tone="bg-success/12" />
+            <StatTile icon={<RefreshCw size={18} className="text-info" />} value={outcome.actualizados} label="Actualizados" tone="bg-info/12" />
+            <StatTile icon={<UserCheck size={18} className="text-muted" />} value={outcome.sinCambios} label="Sin cambios" tone="bg-white/5" />
+            <StatTile icon={<UserMinus size={18} className="text-warning" />} value={outcome.bajas} label="Bajas/Ausentes" tone="bg-warning/12" />
+            <StatTile icon={<AlertTriangle size={18} className="text-danger" />} value={outcome.errores.length} label="Omitidos (error)" tone="bg-danger/12" />
+          </div>
+        )}
       </Card>
+
+      {!failed && outcome.headerless && (
+        <div className="flex items-start gap-3 rounded-2xl border border-info/25 bg-info/[0.06] px-5 py-4 text-[13px] text-muted">
+          <Sparkles size={17} className="mt-0.5 shrink-0 text-info" />
+          <p>
+            Este archivo no tenía nombres de columna, así que identificamos <strong className="text-fg">socio, nombre y el resto de los datos</strong> automáticamente por su contenido. Revisá abajo qué se reconoció y qué quedó sin usar, por si falta algo importante.
+          </p>
+        </div>
+      )}
 
       {mappedFields.length > 0 && (
         <Card className="p-6">
@@ -367,15 +387,32 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
                 <span className="font-medium text-fg">{FIELD_LABELS[field]}</span>
               </div>
             ))}
-            {outcome.mapping.unmapped.map((h) => (
-              <div
-                key={h}
-                className="flex items-center gap-2 rounded-full border border-dashed border-border px-3 py-1.5 text-[13px] text-faint"
-              >
-                {h} · ignorada
-              </div>
-            ))}
           </div>
+
+          {outcome.mapping.unmapped.length > 0 && (
+            <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
+              <p className="text-[12px] text-faint">
+                Columnas sin usar en esta importación:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {outcome.mapping.unmapped.map((h) => {
+                  const sample = samples[h];
+                  return (
+                    <div
+                      key={h}
+                      title={sample?.length ? `Ejemplo: ${sample.join(" · ")}` : undefined}
+                      className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1.5 text-[13px] text-faint"
+                    >
+                      <span>{h}</span>
+                      {sample && sample.length > 0 && (
+                        <span className="text-faint/70">· ej: {sample[0]}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -384,6 +421,14 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
           <h3 className="mb-4 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-warning">
             <AlertTriangle size={15} /> Errores u omisiones ({outcome.errores.length})
           </h3>
+          {failed && (
+            <p className="mb-4 text-[13px] text-muted leading-relaxed">
+              No encontramos una columna de <strong className="text-fg">ID de socio</strong> ni de{" "}
+              <strong className="text-fg">nombre</strong>, ni pudimos reconocerlas por su contenido. Revisá que el
+              archivo tenga esos datos — con encabezados con nombre (ej. &quot;ID Socio&quot;, &quot;Nombre&quot;) o,
+              si no tiene encabezados, que la primera columna sea el número de socio y la segunda el nombre completo.
+            </p>
+          )}
           <div className="max-h-60 space-y-2 overflow-y-auto">
             {outcome.errores.slice(0, 50).map((e, i) => (
               <div key={i} className="flex items-start gap-3 rounded-lg bg-white/[0.02] px-3 py-2 text-[13px]">
