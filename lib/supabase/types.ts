@@ -577,9 +577,24 @@ export interface Database {
         };
         Returns: Json;
       };
-      request_class_enrollment: {
+      request_class_enrollments_bulk: {
         Args: {
+          p_schedule_ids: string[];
+        };
+        Returns: Json;
+      };
+      approve_class_enrollments_bulk: {
+        Args: {
+          p_enrollment_ids: string[];
+          p_weeks_ahead?: number;
+        };
+        Returns: Json;
+      };
+      admin_assign_enrollment: {
+        Args: {
+          p_user_id: string;
           p_schedule_id: string;
+          p_weeks_ahead?: number;
         };
         Returns: Json;
       };

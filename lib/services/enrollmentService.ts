@@ -35,6 +35,7 @@ export interface EnrollmentActionResponse {
   success: boolean;
   error?: string;
   enrollmentId?: string;
+  count?: number;
 }
 
 const DAY_NAMES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
@@ -48,10 +49,10 @@ function parseEnrollmentError(rawError: string | null | undefined): string {
   const err = rawError.toLowerCase();
 
   if (err.includes("no estás autenticado")) return "Debés iniciar sesión para solicitar un turno.";
-  if (err.includes("solicitud de turno pendiente")) return "Ya tenés una solicitud de turno pendiente de aprobación.";
-  if (err.includes("turno activo")) return "Ya tenés un turno activo. Para cambiarlo, pedile el cambio al staff por WhatsApp.";
-  if (err.includes("no existe o no se encuentra activo")) return "El horario seleccionado ya no está disponible.";
-  if (err.includes("no está habilitada")) return "Esta actividad se encuentra temporalmente inactiva.";
+  if (err.includes("ya anotaste tus horarios")) return "Ya anotaste tus horarios semanales. Para modificarlos, pedile el cambio al staff por WhatsApp.";
+  if (err.includes("elegí al menos un horario")) return "Elegí al menos un horario antes de confirmar.";
+  if (err.includes("ya no está disponible") || err.includes("no está disponible")) return "Uno de los horarios seleccionados ya no está disponible. Volvé a intentarlo.";
+  if (err.includes("temporalmente inactiva")) return "Una de las actividades seleccionadas se encuentra temporalmente inactiva.";
   if (err.includes("no se encontró el perfil")) return "No se encontró tu perfil de usuario.";
 
   return rawError;
@@ -97,8 +98,8 @@ export async function getAvailableClassSchedules(): Promise<{ data: AvailableSch
   }
 }
 
-/** 2. Fetch the authenticated client's latest enrollment (pending/active/rejected/cancelled). */
-export async function getMyEnrollment(): Promise<{ data: MyEnrollment | null; error: string | null }> {
+/** 2. Fetch ALL of the authenticated client's enrollments (a client can now have several: one per weekly day). */
+export async function getMyEnrollments(): Promise<{ data: MyEnrollment[]; error: string | null }> {
   try {
     const supabase = createClient();
 
@@ -116,45 +117,54 @@ export async function getMyEnrollment(): Promise<{ data: MyEnrollment | null; er
         class_schedules ( day_of_week, start_time, end_time )
       `,
       )
-      .order("requested_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .in("status", ["pending", "active"])
+      .order("requested_at", { ascending: true });
 
     if (error) {
-      console.error("Error fetching my enrollment:", error);
-      return { data: null, error: "No se pudo consultar tu turno." };
+      console.error("Error fetching my enrollments:", error);
+      return { data: [], error: "No se pudo consultar tus turnos." };
     }
 
-    if (!data) return { data: null, error: null };
+    const items: MyEnrollment[] = (data || []).map((row: any) => ({
+      id: row.id,
+      status: row.status as EnrollmentStatus,
+      classScheduleId: row.class_schedule_id,
+      className: row.class_types?.name || "Clase",
+      classColor: row.class_types?.color || "#22a058",
+      dayOfWeek: Number(row.class_schedules?.day_of_week ?? 0),
+      startTime: row.class_schedules?.start_time ? String(row.class_schedules.start_time).slice(0, 5) : "—",
+      endTime: row.class_schedules?.end_time ? String(row.class_schedules.end_time).slice(0, 5) : null,
+      requestedAt: row.requested_at,
+      decidedAt: row.decided_at,
+      decisionNotes: row.decision_notes,
+    }));
 
-    const row = data as any;
-    return {
-      data: {
-        id: row.id,
-        status: row.status as EnrollmentStatus,
-        classScheduleId: row.class_schedule_id,
-        className: row.class_types?.name || "Clase",
-        classColor: row.class_types?.color || "#22a058",
-        dayOfWeek: Number(row.class_schedules?.day_of_week ?? 0),
-        startTime: row.class_schedules?.start_time ? String(row.class_schedules.start_time).slice(0, 5) : "—",
-        endTime: row.class_schedules?.end_time ? String(row.class_schedules.end_time).slice(0, 5) : null,
-        requestedAt: row.requested_at,
-        decidedAt: row.decided_at,
-        decisionNotes: row.decision_notes,
-      },
-      error: null,
-    };
+    // Días de la semana primero (Lunes..Sábado, Domingo al final), luego por horario.
+    items.sort((a, b) => {
+      const da = a.dayOfWeek === 0 ? 7 : a.dayOfWeek;
+      const db = b.dayOfWeek === 0 ? 7 : b.dayOfWeek;
+      if (da !== db) return da - db;
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    return { data: items, error: null };
   } catch (err: any) {
-    console.error("Unexpected error in getMyEnrollment:", err);
-    return { data: null, error: "Error inesperado al consultar tu turno." };
+    console.error("Unexpected error in getMyEnrollments:", err);
+    return { data: [], error: "Error inesperado al consultar tus turnos." };
   }
 }
 
-/** 3. Request a fixed weekly turno (creates a 'pending' enrollment awaiting owner approval). */
-export async function requestClassEnrollment(scheduleId: string): Promise<EnrollmentActionResponse> {
+/**
+ * 3. Request the client's fixed weekly schedule, ALL AT ONCE and BY ONLY ONCE:
+ * creates one 'pending' enrollment per selected day/time, awaiting owner approval.
+ * Blocked forever after the first successful call (see request_class_enrollments_bulk).
+ */
+export async function requestClassEnrollments(scheduleIds: string[]): Promise<EnrollmentActionResponse> {
   try {
     const supabase = createClient();
-    const { data, error } = await supabase.rpc("request_class_enrollment", { p_schedule_id: scheduleId });
+    const { data, error } = await supabase.rpc("request_class_enrollments_bulk", {
+      p_schedule_ids: scheduleIds,
+    });
 
     if (error) {
       return { success: false, error: parseEnrollmentError(error.message) };
@@ -165,9 +175,9 @@ export async function requestClassEnrollment(scheduleId: string): Promise<Enroll
       return { success: false, error: parseEnrollmentError(res.error) };
     }
 
-    return { success: true, enrollmentId: res?.enrollment_id };
+    return { success: true, count: res?.count };
   } catch (err: any) {
-    console.error("Unexpected error in requestClassEnrollment:", err);
+    console.error("Unexpected error in requestClassEnrollments:", err);
     return { success: false, error: "Ocurrió un error al enviar tu solicitud. Por favor reintentá." };
   }
 }
@@ -196,21 +206,24 @@ export async function cancelMyEnrollmentRequest(enrollmentId: string): Promise<E
   }
 }
 
-/** Build a wa.me link to the gym owner asking for a turno change, pre-filled with context. */
+/** Build a wa.me link to the gym owner asking for a turno change, pre-filled with context (may list several days). */
 export function buildTurnoChangeWhatsappLink(
   ownerWhatsapp: string | null | undefined,
   studentName: string,
-  currentTurno: { className: string; dayOfWeek: number; startTime: string } | null,
+  currentTurnos: { className: string; dayOfWeek: number; startTime: string }[],
 ): string | null {
   if (!ownerWhatsapp) return null;
   const sanitizedPhone = ownerWhatsapp.replace(/[^\d]/g, "");
   if (!sanitizedPhone) return null;
 
-  const turnoText = currentTurno
-    ? `${currentTurno.className} los ${dayName(currentTurno.dayOfWeek)} a las ${currentTurno.startTime}`
-    : "mi turno";
+  const turnoText =
+    currentTurnos.length > 0
+      ? currentTurnos
+          .map((t) => `${t.className} los ${dayName(t.dayOfWeek)} a las ${t.startTime}`)
+          .join(", ")
+      : "mis turnos";
 
-  const message = `Hola! Soy ${studentName}. Tengo el turno de ${turnoText} y quisiera solicitar un cambio de horario. ¿Me ayudás? 🙏`;
+  const message = `Hola! Soy ${studentName}. Tengo anotados estos horarios: ${turnoText}. Quisiera solicitar un cambio. ¿Me ayudás? 🙏`;
 
   return `https://wa.me/${sanitizedPhone}?text=${encodeURIComponent(message)}`;
 }

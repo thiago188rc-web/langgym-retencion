@@ -5,78 +5,111 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { dayName, type MyEnrollment } from "@/lib/services/enrollmentService";
 
-export function TurnoStatusCard({
+function EnrollmentRow({
   enrollment,
-  whatsappLink,
   cancelling,
   onCancelRequest,
 }: {
   enrollment: MyEnrollment;
-  whatsappLink: string | null;
   cancelling: boolean;
-  onCancelRequest: () => void;
+  onCancelRequest: (id: string) => void;
 }) {
   const isPending = enrollment.status === "pending";
   const dayLabel = dayName(enrollment.dayOfWeek);
   const dayCapitalized = dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1);
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-faint">Mi turno</h2>
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card/80 p-4 shadow-sm">
+      <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: enrollment.classColor }} />
 
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-card/80 p-5 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: enrollment.classColor }} />
-
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="flex size-10 items-center justify-center rounded-xl shrink-0"
-              style={{ backgroundColor: `${enrollment.classColor}22`, color: enrollment.classColor }}
-            >
-              {isPending ? <Hourglass size={18} /> : <CheckCircle2 size={18} />}
-            </span>
-            <div>
-              <h3 className="font-bold text-base text-fg tracking-tight">{enrollment.className}</h3>
-              <p className="flex items-center gap-1.5 text-xs text-muted mt-0.5">
-                <Clock size={13} className="text-faint" />
-                {dayCapitalized} a las {enrollment.startTime} hs
-              </p>
-            </div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="flex size-9 items-center justify-center rounded-xl shrink-0"
+            style={{ backgroundColor: `${enrollment.classColor}22`, color: enrollment.classColor }}
+          >
+            {isPending ? <Hourglass size={16} /> : <CheckCircle2 size={16} />}
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-bold text-sm text-fg tracking-tight truncate">{enrollment.className}</h3>
+            <p className="flex items-center gap-1.5 text-xs text-muted mt-0.5">
+              <Clock size={12} className="text-faint shrink-0" />
+              {dayCapitalized} a las {enrollment.startTime} hs
+            </p>
           </div>
+        </div>
 
+        <div className="flex items-center gap-2 shrink-0">
           {isPending ? (
             <Badge tone="warning" dot>Pendiente</Badge>
           ) : (
             <Badge tone="success" dot>Confirmado</Badge>
           )}
-        </div>
-
-        {isPending ? (
-          <p className="mt-4 text-xs text-muted leading-relaxed">
-            Tu solicitud está esperando la aprobación del staff. Una vez que confirmen tu pago, vas a poder
-            reservar tu lugar todas las semanas en este horario.
-          </p>
-        ) : (
-          <p className="mt-4 text-xs text-muted leading-relaxed">
-            Este es tu turno fijo semanal. Tus próximas clases ya están reservadas automáticamente — mirá el
-            detalle más abajo. ¿Necesitás otro día u horario? Pedilo por WhatsApp, no podés cambiarlo vos
-            mismo desde la app.
-          </p>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
-          {isPending ? (
+          {isPending && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={onCancelRequest}
+              onClick={() => onCancelRequest(enrollment.id)}
               disabled={cancelling}
               className="text-xs text-muted hover:text-danger"
             >
               <X size={13} />
-              {cancelling ? "Cancelando…" : "Cancelar solicitud"}
             </Button>
-          ) : whatsappLink ? (
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TurnoStatusCard({
+  enrollments,
+  whatsappLink,
+  cancellingId,
+  onCancelRequest,
+}: {
+  enrollments: MyEnrollment[];
+  whatsappLink: string | null;
+  cancellingId: string | null;
+  onCancelRequest: (id: string) => void;
+}) {
+  const pendingCount = enrollments.filter((e) => e.status === "pending").length;
+  const activeCount = enrollments.filter((e) => e.status === "active").length;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-faint">
+        Mis horarios semanales {enrollments.length > 1 && `(${enrollments.length})`}
+      </h2>
+
+      {pendingCount > 0 && (
+        <p className="text-xs text-muted leading-relaxed">
+          {pendingCount === 1
+            ? "Tenés 1 horario esperando la aprobación del staff."
+            : `Tenés ${pendingCount} horarios esperando la aprobación del staff.`}{" "}
+          Una vez que confirmen tu pago, vas a tener tu lugar reservado todas las semanas.
+        </p>
+      )}
+
+      <div className="space-y-2.5">
+        {enrollments.map((e) => (
+          <EnrollmentRow
+            key={e.id}
+            enrollment={e}
+            cancelling={cancellingId === e.id}
+            onCancelRequest={onCancelRequest}
+          />
+        ))}
+      </div>
+
+      {activeCount > 0 && (
+        <div className="rounded-2xl border border-border bg-card/40 p-4 space-y-2.5">
+          <p className="text-xs text-muted leading-relaxed">
+            Estos son tus horarios fijos semanales, ya reservados automáticamente. Es una elección{" "}
+            <strong className="text-fg">definitiva</strong>: no podés cambiarlos vos mismo desde la app.
+            ¿Necesitás otro día u horario? Pedilo por WhatsApp.
+          </p>
+          {whatsappLink ? (
             <a href={whatsappLink} target="_blank" rel="noreferrer">
               <Button variant="secondary" size="sm" className="text-xs">
                 <MessageCircle size={14} className="text-emerald-400" />
@@ -89,7 +122,7 @@ export function TurnoStatusCard({
             </p>
           )}
         </div>
-      </div>
+      )}
     </section>
   );
 }
