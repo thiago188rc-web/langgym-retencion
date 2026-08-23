@@ -35,6 +35,9 @@ interface AppState {
   hasData: boolean;
   isLoadingFromSupabase: boolean;
   lastSyncError: string | null;
+  /** false (default) = solo socios con vencimiento reciente; true = todo el histórico importado. */
+  showHistorico: boolean;
+  setShowHistorico: (value: boolean) => void;
 
   // Synchronization with Supabase
   syncFromSupabase: (organizationId: string) => Promise<void>;
@@ -72,6 +75,8 @@ export const useStore = create<AppState>()(
       hasData: false,
       isLoadingFromSupabase: false,
       lastSyncError: null,
+      showHistorico: false,
+      setShowHistorico: (value) => set({ showHistorico: value }),
 
       syncFromSupabase: async (organizationId: string) => {
         if (!organizationId) return;
@@ -342,6 +347,7 @@ export const useStore = create<AppState>()(
         config: state.config,
         imports: state.imports,
         hasData: state.hasData,
+        showHistorico: state.showHistorico,
       }),
     },
   ),
