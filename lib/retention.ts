@@ -169,3 +169,32 @@ export function computeMetrics(students: Student[], config: Config): DashboardMe
     contactosMes,
   };
 }
+
+// ---- "Histórico completo" filter --------------------------------------
+//
+// A padrón importado desde un sistema legado suele traer TODO el histórico
+// de socios que alguna vez pasaron por el gimnasio, no solo los actuales.
+// Sin distinguirlos, el dashboard termina mostrando "vencidos"/"perdidos"
+// sobre miles de personas que se fueron hace años — un número real, pero
+// inútil para decidir a quién contactar hoy. Por default, la app solo
+// cuenta socios "relevantes": sin fecha de vencimiento cargada (puede ser
+// un alta reciente sin ese dato todavía) o con vencimiento dentro de los
+// últimos `cutoffMonths` meses. El resto queda disponible activando "ver
+// histórico completo".
+export const HISTORICO_CUTOFF_MONTHS = 12;
+
+export function isRelevantStudent(student: Student, cutoffMonths: number = HISTORICO_CUTOFF_MONTHS): boolean {
+  if (!student.fechaFin) return true;
+  const fechaFin = new Date(student.fechaFin);
+  if (isNaN(fechaFin.getTime())) return true;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - cutoffMonths);
+  return fechaFin >= cutoff;
+}
+
+export function filterRelevantStudents(
+  students: Student[],
+  cutoffMonths: number = HISTORICO_CUTOFF_MONTHS,
+): Student[] {
+  return students.filter((s) => isRelevantStudent(s, cutoffMonths));
+}

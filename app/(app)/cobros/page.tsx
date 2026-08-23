@@ -4,9 +4,11 @@ import { useMemo } from "react";
 import { Wallet } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { getCobros, type StudentWithSignals } from "@/lib/selectors";
+import { filterRelevantStudents } from "@/lib/retention";
 import { StudentCard } from "@/components/students/StudentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
+import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
 import { cn } from "@/lib/utils";
 
 function CobroSection({
@@ -48,16 +50,23 @@ function CobroSection({
 }
 
 export default function CobrosPage() {
-  const students = useStore((s) => s.students);
+  const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
+  const showHistorico = useStore((s) => s.showHistorico);
+  const students = useMemo(
+    () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
+    [allStudents, showHistorico],
+  );
   const cobros = useMemo(() => getCobros(students, config), [students, config]);
 
-  if (students.length === 0) return <NoData />;
+  if (allStudents.length === 0) return <NoData />;
 
   const totalAcciones = cobros.hoy.length + cobros.semana.length + cobros.vencidas.length;
 
   return (
     <div className="space-y-8">
+      <HistoricoFilterBanner totalCount={allStudents.length} relevantCount={students.length} />
+
       {totalAcciones === 0 ? (
         <EmptyState
           icon={Wallet}

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetchAll";
 import type { Student } from "@/lib/types";
 import type { Database } from "@/lib/supabase/types";
 
@@ -78,32 +79,40 @@ export function mapStudentToInsert(student: Student, organizationId: string): St
 export async function fetchStudentsFromSupabase(organizationId: string): Promise<Student[]> {
   const supabase = createClient();
 
-  // 1. Fetch all students for the organization with explicit column selection
-  const { data: studentRows, error: sErr } = await supabase
-    .from("students")
-    .select(
-      "id, organization_id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion, created_at, updated_at",
-    )
-    .eq("organization_id", organizationId)
-    .order("nombre", { ascending: true });
-
-  if (sErr || !studentRows) {
+  // 1. Fetch ALL students for the organization (paginated — a single request
+  // caps at 1000 rows, and this org has thousands).
+  let studentRows: StudentRow[];
+  try {
+    studentRows = await fetchAllRows<StudentRow>(() =>
+      supabase
+        .from("students")
+        .select(
+          "id, organization_id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion, created_at, updated_at",
+        )
+        .eq("organization_id", organizationId)
+        .order("nombre", { ascending: true }),
+    );
+  } catch {
     throw new Error("No se pudieron cargar los alumnos desde el servidor.");
   }
 
-  // 2. Fetch all follow-ups for the organization with selective fields
-  const { data: followUpRows } = await supabase
-    .from("follow_ups")
-    .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
-    .eq("organization_id", organizationId)
-    .order("fecha", { ascending: false });
+  // 2. Fetch all follow-ups for the organization (paginated)
+  const followUpRows = await fetchAllRows<FollowUpRow>(() =>
+    supabase
+      .from("follow_ups")
+      .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
+      .eq("organization_id", organizationId)
+      .order("fecha", { ascending: false }),
+  ).catch(() => [] as FollowUpRow[]);
 
-  // 3. Fetch snapshots with selective fields
-  const { data: snapshotRows } = await supabase
-    .from("snapshots")
-    .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
-    .eq("organization_id", organizationId)
-    .order("fecha", { ascending: false });
+  // 3. Fetch snapshots (paginated)
+  const snapshotRows = await fetchAllRows<SnapshotRow>(() =>
+    supabase
+      .from("snapshots")
+      .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
+      .eq("organization_id", organizationId)
+      .order("fecha", { ascending: false }),
+  ).catch(() => [] as SnapshotRow[]);
 
   const fuByStudent: Record<string, FollowUpRow[]> = {};
   (followUpRows || []).forEach((fu) => {

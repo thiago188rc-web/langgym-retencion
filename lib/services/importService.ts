@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetchAll";
 import type { NormalizedStudent } from "@/lib/import/types";
 import type { Student, ImportRecord, CanonicalField } from "@/lib/types";
 import { mapRowToStudent } from "./studentsService";
@@ -57,19 +58,40 @@ export async function syncExcelImportToSupabase(
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 1. Fetch current students in DB to build lookup map by id_socio
-  const { data: existingRows, error: fetchErr } = await supabase
-    .from("students")
-    .select(
-      "id, id_socio, nombre, apellido, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
-    )
-    .eq("organization_id", organizationId);
-
-  if (fetchErr) {
+  // 1. Fetch ALL current students in DB to build lookup map by id_socio
+  // (paginated — a single request caps at 1000 rows; without this, every
+  // student past the first page silently looked "new" on reimport, tripping
+  // the unique id_socio constraint or duplicating snapshots for real people).
+  let existingRows: Array<{
+    id: string;
+    id_socio: string;
+    nombre: string;
+    apellido: string | null;
+    telefono: string | null;
+    telefono_raw: string | null;
+    email: string | null;
+    habilitado: boolean;
+    id_membresia: string | null;
+    membresia: string | null;
+    fecha_fin: string | null;
+    fecha_alta: string | null;
+    ultima_asistencia: string | null;
+    observacion: string | null;
+  }>;
+  try {
+    existingRows = await fetchAllRows(() =>
+      supabase
+        .from("students")
+        .select(
+          "id, id_socio, nombre, apellido, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
+        )
+        .eq("organization_id", organizationId),
+    );
+  } catch {
     throw new Error("No pudimos consultar los alumnos existentes en el servidor.");
   }
 
-  const existingBySocio = new Map(existingRows?.map((r) => [r.id_socio, r]));
+  const existingBySocio = new Map(existingRows.map((r) => [r.id_socio, r]));
   const importedSocioSet = new Set<string>();
 
   let nuevosCount = 0;
@@ -317,35 +339,38 @@ export async function syncExcelImportToSupabase(
   };
 
   // 6. Reload full student list with preserved follow-ups and snapshots
-  const { data: allFreshRows } = await supabase
-    .from("students")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .order("nombre", { ascending: true });
+  // (paginated — same 1000-row cap applies here).
+  const allFreshRows = await fetchAllRows<any>(() =>
+    supabase.from("students").select("*").eq("organization_id", organizationId).order("nombre", { ascending: true }),
+  ).catch(() => [] as any[]);
 
-  const { data: allFollowUps } = await supabase
-    .from("follow_ups")
-    .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
-    .eq("organization_id", organizationId);
+  const allFollowUps = await fetchAllRows<any>(() =>
+    supabase
+      .from("follow_ups")
+      .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
+      .eq("organization_id", organizationId),
+  ).catch(() => [] as any[]);
 
-  const { data: allSnapshots } = await supabase
-    .from("snapshots")
-    .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
-    .eq("organization_id", organizationId);
+  const allSnapshots = await fetchAllRows<any>(() =>
+    supabase
+      .from("snapshots")
+      .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
+      .eq("organization_id", organizationId),
+  ).catch(() => [] as any[]);
 
   const fuByStudent: Record<string, any[]> = {};
-  (allFollowUps || []).forEach((fu) => {
+  allFollowUps.forEach((fu) => {
     if (!fuByStudent[fu.student_id]) fuByStudent[fu.student_id] = [];
     fuByStudent[fu.student_id].push(fu);
   });
 
   const snapByStudent: Record<string, any[]> = {};
-  (allSnapshots || []).forEach((sn) => {
+  allSnapshots.forEach((sn) => {
     if (!snapByStudent[sn.student_id]) snapByStudent[sn.student_id] = [];
     snapByStudent[sn.student_id].push(sn);
   });
 
-  const syncedStudents = (allFreshRows || []).map((r) =>
+  const syncedStudents = allFreshRows.map((r) =>
     mapRowToStudent(r, fuByStudent[r.id] || [], snapByStudent[r.id] || []),
   );
 

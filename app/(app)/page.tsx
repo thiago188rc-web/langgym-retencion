@@ -14,15 +14,17 @@ import {
   UserMinus,
   Activity,
   ArrowRight,
+  Users,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { computeMetrics } from "@/lib/retention";
+import { computeMetrics, filterRelevantStudents } from "@/lib/retention";
 import { getPrioridadHoy } from "@/lib/selectors";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PriorityRow } from "@/components/dashboard/PriorityRow";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
+import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -33,8 +35,14 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardPage() {
-  const students = useStore((s) => s.students);
+  const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
+  const showHistorico = useStore((s) => s.showHistorico);
+
+  const students = useMemo(
+    () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
+    [allStudents, showHistorico],
+  );
 
   const m = useMemo(() => {
     if (students.length === 0) return null;
@@ -46,10 +54,20 @@ export default function DashboardPage() {
     return getPrioridadHoy(students, config, 7);
   }, [students, config]);
 
-  if (students.length === 0 || !m) return <NoData />;
+  if (allStudents.length === 0) return <NoData />;
 
   return (
     <div className="space-y-8">
+      <HistoricoFilterBanner totalCount={allStudents.length} relevantCount={students.length} />
+
+      {students.length === 0 || !m ? (
+        <EmptyState
+          icon={Users}
+          title="No hay socios recientes"
+          description="Todos tus socios importados vencieron hace más de 12 meses. Activá 'ver histórico completo' arriba para verlos."
+        />
+      ) : (
+      <>
       {/* Priority + headline */}
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Card className="flex flex-col overflow-hidden" glow>
@@ -141,6 +159,8 @@ export default function DashboardPage() {
           <KpiCard label="Contactos realizados" value={m.contactosMes} icon={PiggyBank} tone="accent" href="/metricas" index={2} />
         </div>
       </section>
+      </>
+      )}
     </div>
   );
 }

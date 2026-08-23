@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetchAll";
 import type { Database } from "@/lib/supabase/types";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -47,12 +48,13 @@ export async function getUnlinkedClientProfiles(): Promise<{
       return { data: [], error: null };
     }
 
-    // 2. Fetch students to find potential matches
-    const { data: students } = await supabase
-      .from("students")
-      .select("id, id_socio, nombre_completo, email, telefono, telefono_raw");
-
-    const studentList = students || [];
+    // 2. Fetch ALL students to find potential matches (paginated — this org
+    // has thousands, a single request caps at 1000).
+    const studentList = await fetchAllRows<
+      Pick<Student, "id" | "id_socio" | "nombre_completo" | "email" | "telefono" | "telefono_raw">
+    >(() =>
+      supabase.from("students").select("id, id_socio, nombre_completo, email, telefono, telefono_raw"),
+    ).catch(() => []);
 
     const result: UnlinkedClientProfile[] = profiles.map((prof) => {
       const cleanEmail = (prof.email || "").toLowerCase().trim();

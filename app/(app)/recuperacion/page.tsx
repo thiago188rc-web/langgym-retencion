@@ -5,10 +5,12 @@ import { ChevronLeft, ChevronRight, HeartPulse } from "lucide-react";
 import { motion } from "framer-motion";
 import { useStore } from "@/lib/store";
 import { getAusentes, groupByBucket } from "@/lib/selectors";
+import { filterRelevantStudents } from "@/lib/retention";
 import { StudentCard } from "@/components/students/StudentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { Button } from "@/components/ui/Button";
+import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
 import { cn } from "@/lib/utils";
 import type { AusenciaBucket } from "@/lib/retention";
 
@@ -25,10 +27,16 @@ const TABS: { key: Filter; label: string }[] = [
 const PAGE_SIZE = 18;
 
 export default function RecuperacionPage() {
-  const students = useStore((s) => s.students);
+  const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
+  const showHistorico = useStore((s) => s.showHistorico);
   const [filter, setFilter] = useState<Filter>("all");
   const [currentPage, setCurrentPage] = useState(1);
+
+  const students = useMemo(
+    () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
+    [allStudents, showHistorico],
+  );
 
   const { items, groups } = useMemo(() => {
     const items = getAusentes(students, config);
@@ -39,7 +47,7 @@ export default function RecuperacionPage() {
     setCurrentPage(1);
   }, [filter]);
 
-  if (students.length === 0) return <NoData />;
+  if (allStudents.length === 0) return <NoData />;
 
   const counts: Record<Filter, number> = {
     all: items.length,
@@ -56,6 +64,8 @@ export default function RecuperacionPage() {
 
   return (
     <div className="space-y-6">
+      <HistoricoFilterBanner totalCount={allStudents.length} relevantCount={students.length} />
+
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map((tab) => (
           <button
