@@ -116,6 +116,10 @@ export interface ImportResult {
   errores: ImportError[];
   totalFilas: number;
   parsedStudents: ParsedStudent[];
+  /** true when the file had no recognizable header row and columns were guessed from their content. */
+  headerless?: boolean;
+  /** up to 3 sample values per unmapped column, so the user can tell what it actually contains. */
+  unmappedSamples?: Record<string, string[]>;
 }
 
 /** A student parsed from one Excel row, before reconciliation with the store. */
