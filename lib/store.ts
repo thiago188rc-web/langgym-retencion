@@ -35,6 +35,13 @@ interface AppState {
   hasData: boolean;
   isLoadingFromSupabase: boolean;
   lastSyncError: string | null;
+  /**
+   * false until syncFromSupabase resolves at least once THIS session. Not
+   * persisted — every fresh page load must prove it has the real data before
+   * pages render metrics off of it, otherwise they flash whatever stale
+   * `students` snapshot was cached in localStorage from a previous session.
+   */
+  hasSyncedOnce: boolean;
   /** false (default) = solo socios con vencimiento reciente; true = todo el histórico importado. */
   showHistorico: boolean;
   setShowHistorico: (value: boolean) => void;
@@ -75,6 +82,7 @@ export const useStore = create<AppState>()(
       hasData: false,
       isLoadingFromSupabase: false,
       lastSyncError: null,
+      hasSyncedOnce: false,
       showHistorico: false,
       setShowHistorico: (value) => set({ showHistorico: value }),
 
@@ -94,11 +102,13 @@ export const useStore = create<AppState>()(
             config: cloudConfig ? { ...get().config, ...cloudConfig } : get().config,
             hasData: cloudStudents.length > 0,
             isLoadingFromSupabase: false,
+            hasSyncedOnce: true,
           });
         } catch (err: any) {
           console.warn("Could not sync from Supabase, relying on local state:", err);
           set({
             isLoadingFromSupabase: false,
+            hasSyncedOnce: true,
             lastSyncError: err?.message || "Error al sincronizar con el servidor",
           });
         }

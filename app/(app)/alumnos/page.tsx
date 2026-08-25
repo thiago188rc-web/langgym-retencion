@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { CuotaBadge, RiesgoBadge } from "@/components/students/StatusBadges";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
+import { PanelLoading } from "@/components/shared/PanelLoading";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { relativeDays } from "@/lib/dates";
@@ -30,6 +31,8 @@ const PAGE_SIZES = [25, 50, 100];
 export default function AlumnosPage() {
   const students = useStore((s) => s.students);
   const config = useStore((s) => s.config);
+  const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
+  const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
   const [query, setQuery] = useState("");
   const [estado, setEstado] = useState<EstadoFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -59,6 +62,7 @@ export default function AlumnosPage() {
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedRows = filteredRows.slice(startIndex, startIndex + pageSize);
 
+  if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (students.length === 0) return <NoData />;
 
   return (

@@ -21,6 +21,7 @@ import { computeAnalytics } from "@/lib/analytics";
 import { Card } from "@/components/ui/Card";
 import { CountUp } from "@/components/ui/CountUp";
 import { NoData } from "@/components/NoData";
+import { PanelLoading } from "@/components/shared/PanelLoading";
 import { MonthlyEvolutionChart } from "@/components/analytics/MonthlyEvolutionChart";
 import { HistoricalImportsTable } from "@/components/analytics/HistoricalImportsTable";
 import { BajasList } from "@/components/analytics/BajasList";
@@ -121,6 +122,8 @@ export default function MetricasPage() {
   const students = useStore((s) => s.students);
   const imports = useStore((s) => s.imports);
   const config = useStore((s) => s.config);
+  const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
+  const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
 
   const [period, setPeriod] = useState<PeriodFilter>("todo");
   const [activeTab, setActiveTab] = useState<"evolucion" | "bajas" | "cuotas">("evolucion");
@@ -145,6 +148,7 @@ export default function MetricasPage() {
     return { m, cuotas, recuperaciones };
   }, [students, config]);
 
+  if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (students.length === 0 && imports.length === 0) return <NoData />;
 
   const { m, cuotas } = retention;

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { Button } from "@/components/ui/Button";
 import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
+import { PanelLoading } from "@/components/shared/PanelLoading";
 import { cn } from "@/lib/utils";
 import type { AusenciaBucket } from "@/lib/retention";
 
@@ -30,6 +31,8 @@ export default function RecuperacionPage() {
   const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const showHistorico = useStore((s) => s.showHistorico);
+  const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
+  const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
   const [filter, setFilter] = useState<Filter>("all");
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -47,6 +50,7 @@ export default function RecuperacionPage() {
     setCurrentPage(1);
   }, [filter]);
 
+  if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (allStudents.length === 0) return <NoData />;
 
   const counts: Record<Filter, number> = {
