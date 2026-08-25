@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
+import { PanelLoading } from "@/components/shared/PanelLoading";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -38,6 +39,8 @@ export default function DashboardPage() {
   const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const showHistorico = useStore((s) => s.showHistorico);
+  const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
+  const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
 
   const students = useMemo(
     () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
@@ -54,6 +57,7 @@ export default function DashboardPage() {
     return getPrioridadHoy(students, config, 7);
   }, [students, config]);
 
+  if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (allStudents.length === 0) return <NoData />;
 
   return (

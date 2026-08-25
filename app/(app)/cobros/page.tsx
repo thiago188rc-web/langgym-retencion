@@ -9,6 +9,7 @@ import { StudentCard } from "@/components/students/StudentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
+import { PanelLoading } from "@/components/shared/PanelLoading";
 import { cn } from "@/lib/utils";
 
 function CobroSection({
@@ -53,12 +54,15 @@ export default function CobrosPage() {
   const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const showHistorico = useStore((s) => s.showHistorico);
+  const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
+  const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
   const students = useMemo(
     () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
     [allStudents, showHistorico],
   );
   const cobros = useMemo(() => getCobros(students, config), [students, config]);
 
+  if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (allStudents.length === 0) return <NoData />;
 
   const totalAcciones = cobros.hoy.length + cobros.semana.length + cobros.vencidas.length;
