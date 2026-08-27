@@ -11,8 +11,10 @@ import {
   isKnownRole,
   isAdminRole,
   isClientRole,
+  isProfesorRole,
   ADMIN_HOME,
   CLIENT_HOME,
+  PROFESOR_HOME,
   INCOMPLETE_PROFILE_ROUTE,
 } from "../lib/auth/roleRouting.ts";
 
@@ -58,4 +60,14 @@ test("isKnownRole / isAdminRole / isClientRole classify correctly", () => {
   assert.equal(isClientRole("cliente"), true);
   assert.equal(isClientRole("owner"), false);
   assert.equal(isClientRole(null), false);
+});
+
+test("profesor role routes to /actividades, is known, but is neither admin nor cliente", () => {
+  assert.equal(homeForRole("profesor"), PROFESOR_HOME);
+  assert.equal(isKnownRole("profesor"), true);
+  assert.equal(isProfesorRole("profesor"), true);
+  assert.equal(isAdminRole("profesor"), false);
+  assert.equal(isClientRole("profesor"), false);
+  assert.equal(isProfesorRole("cliente"), false);
+  assert.equal(isProfesorRole(null), false);
 });
