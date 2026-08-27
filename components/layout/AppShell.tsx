@@ -8,7 +8,7 @@ import { MobileNav } from "./MobileNav";
 import { ToastViewport } from "@/components/ui/Toast";
 import { useHydrated } from "@/lib/useHydrated";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { isAdminRole, isClientRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
+import { isAdminRole, isClientRole, isProfesorRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
 
 function BootScreen() {
   return (
@@ -38,6 +38,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!user) return; // middleware handles unauthenticated redirects
     if (isClientRole(profile?.role)) {
       router.replace("/mi-panel");
+    } else if (isProfesorRole(profile?.role)) {
+      router.replace("/actividades");
     } else if (!isAdminRole(profile?.role)) {
       router.replace(INCOMPLETE_PROFILE_ROUTE);
     }

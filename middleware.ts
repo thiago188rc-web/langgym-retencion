@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   homeForRole,
   isClientRole,
+  isProfesorRole,
   isKnownRole,
   INCOMPLETE_PROFILE_ROUTE,
 } from "@/lib/auth/roleRouting";
@@ -89,7 +90,9 @@ export async function middleware(request: NextRequest) {
 
     const hasIncompleteProfile = !isKnownRole(role);
     const isClient = isClientRole(role);
+    const isProfesor = isProfesorRole(role);
     const isClientRoute = pathname.startsWith("/mi-panel") || pathname.startsWith("/cliente");
+    const isProfesorRoute = pathname.startsWith("/actividades");
     const destination = homeForRole(role);
 
     // A. Authenticated user with an incomplete/unrecognized profile -> always
@@ -127,8 +130,15 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // D. Admin/Staff/Owner trying to access the client-only portal -> redirect to admin dashboard
-    if (!hasIncompleteProfile && !isClient && isClientRoute) {
+    // C2. Profesor trying to access anything outside their own panel -> redirect to /actividades
+    if (isProfesor && !isProfesorRoute && !isPublicRoute && !isIncompleteProfileRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/actividades";
+      return NextResponse.redirect(url);
+    }
+
+    // D. Admin/Staff/Owner trying to access the client-only or profesor-only portal -> redirect to admin dashboard
+    if (!hasIncompleteProfile && !isClient && !isProfesor && (isClientRoute || isProfesorRoute)) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       return NextResponse.redirect(url);

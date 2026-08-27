@@ -15,16 +15,22 @@
 export const ADMIN_ROLES = ["owner", "admin", "staff"] as const;
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 export const CLIENT_ROLE = "cliente" as const;
-export type KnownRole = AdminRole | typeof CLIENT_ROLE;
+export const PROFESOR_ROLE = "profesor" as const;
+export type KnownRole = AdminRole | typeof CLIENT_ROLE | typeof PROFESOR_ROLE;
 
 export const ADMIN_HOME = "/" as const;
 export const CLIENT_HOME = "/mi-panel" as const;
+export const PROFESOR_HOME = "/actividades" as const;
 export const INCOMPLETE_PROFILE_ROUTE = "/perfil-pendiente" as const;
 
 /** True only for the exact set of roles the system currently understands. */
 export function isKnownRole(role: string | null | undefined): role is KnownRole {
   if (!role) return false;
-  return role === CLIENT_ROLE || (ADMIN_ROLES as readonly string[]).includes(role);
+  return (
+    role === CLIENT_ROLE ||
+    role === PROFESOR_ROLE ||
+    (ADMIN_ROLES as readonly string[]).includes(role)
+  );
 }
 
 export function isAdminRole(role: string | null | undefined): role is AdminRole {
@@ -35,18 +41,25 @@ export function isClientRole(role: string | null | undefined): boolean {
   return role === CLIENT_ROLE;
 }
 
+/** Read-only role scoped to classes/enrollments — sees who's signed up for their activities, nothing else. */
+export function isProfesorRole(role: string | null | undefined): boolean {
+  return role === PROFESOR_ROLE;
+}
+
 /**
  * Resolves the destination route for an authenticated user based ONLY on
  * `profiles.role`. Never guess, never default unknown roles to admin.
  *
  *   role === 'cliente'                -> /mi-panel
+ *   role === 'profesor'               -> /actividades
  *   role in (owner, admin, staff)     -> /
  *   role missing / null / unrecognized -> /perfil-pendiente (controlled, non-admin)
  */
 export function homeForRole(
   role: string | null | undefined,
-): typeof ADMIN_HOME | typeof CLIENT_HOME | typeof INCOMPLETE_PROFILE_ROUTE {
+): typeof ADMIN_HOME | typeof CLIENT_HOME | typeof PROFESOR_HOME | typeof INCOMPLETE_PROFILE_ROUTE {
   if (isClientRole(role)) return CLIENT_HOME;
+  if (isProfesorRole(role)) return PROFESOR_HOME;
   if (isAdminRole(role)) return ADMIN_HOME;
   return INCOMPLETE_PROFILE_ROUTE;
 }

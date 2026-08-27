@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = "owner" | "admin" | "staff" | "cliente";
+export type UserRole = "owner" | "admin" | "staff" | "cliente" | "profesor";
 export type ReservationStatus = "confirmed" | "cancelled" | "attended" | "no_show";
 export type EnrollmentStatus = "pending" | "active" | "rejected" | "cancelled";
 
@@ -496,6 +496,23 @@ export interface Database {
           confirmed_reservations: number;
           available_spots: number | null;
           is_user_reserved: boolean;
+        }>;
+      };
+      get_professor_class_roster: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          class_schedule_id: string;
+          class_type_id: string;
+          class_name: string;
+          class_color: string | null;
+          day_of_week: number;
+          start_time: string;
+          end_time: string | null;
+          capacity: number | null;
+          enrollment_id: string | null;
+          enrolled_name: string | null;
+          enrolled_phone: string | null;
+          enrollment_status: string | null;
         }>;
       };
       link_profile_to_student: {
