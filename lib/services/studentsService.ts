@@ -35,6 +35,7 @@ export function mapRowToStudent(
     fechaAlta: row.fecha_alta ? row.fecha_alta.slice(0, 10) : null,
     ultimaAsistencia: row.ultima_asistencia ? row.ultima_asistencia.slice(0, 10) : null,
     observacion: row.observacion,
+    lastImportId: row.last_import_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     snapshots: snapshots.map((s) => ({
@@ -87,7 +88,7 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
       supabase
         .from("students")
         .select(
-          "id, organization_id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion, created_at, updated_at",
+          "id, organization_id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion, last_import_id, created_at, updated_at",
         )
         .eq("organization_id", organizationId)
         .order("nombre", { ascending: true }),
@@ -129,4 +130,17 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
   return studentRows.map((row) =>
     mapRowToStudent(row, fuByStudent[row.id] || [], snapByStudent[row.id] || []),
   );
+}
+
+/** id of the most recent import_records row for this org, or null if none yet. */
+export async function fetchLatestImportId(organizationId: string): Promise<string | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("import_records")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .order("fecha", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
 }

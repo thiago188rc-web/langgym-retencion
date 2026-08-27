@@ -43,6 +43,8 @@ export interface Student {
   fechaAlta: string | null; // ISO
   ultimaAsistencia: string | null; // ISO, if the source provides it
   observacion: string | null;
+  /** import_records.id of the most recent import that touched this student. */
+  lastImportId: string | null;
   createdAt: string;
   updatedAt: string;
   snapshots: Snapshot[];

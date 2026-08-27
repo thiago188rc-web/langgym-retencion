@@ -15,7 +15,7 @@ import type {
 import { DEFAULT_CONFIG } from "./config";
 import { uid } from "./utils";
 import { daysSince } from "./dates";
-import { fetchStudentsFromSupabase } from "./services/studentsService";
+import { fetchStudentsFromSupabase, fetchLatestImportId } from "./services/studentsService";
 import { createFollowUpInSupabase, updateFollowUpResultadoInSupabase } from "./services/followUpsService";
 import { fetchConfigFromSupabase, saveConfigToSupabase } from "./services/configService";
 
@@ -45,6 +45,11 @@ interface AppState {
   /** false (default) = solo socios con vencimiento reciente; true = todo el histórico importado. */
   showHistorico: boolean;
   setShowHistorico: (value: boolean) => void;
+  /** false (default) = todo el roster; true = solo los socios de la última importación. */
+  showOnlyLastImport: boolean;
+  setShowOnlyLastImport: (value: boolean) => void;
+  /** id del import_records más reciente para esta organización, o null si nunca importó. Not persisted. */
+  latestImportId: string | null;
 
   // Synchronization with Supabase
   syncFromSupabase: (organizationId: string) => Promise<void>;
@@ -85,6 +90,9 @@ export const useStore = create<AppState>()(
       hasSyncedOnce: false,
       showHistorico: false,
       setShowHistorico: (value) => set({ showHistorico: value }),
+      showOnlyLastImport: false,
+      setShowOnlyLastImport: (value) => set({ showOnlyLastImport: value }),
+      latestImportId: null,
 
       syncFromSupabase: async (organizationId: string) => {
         if (!organizationId) return;
@@ -97,12 +105,16 @@ export const useStore = create<AppState>()(
           // 2. Fetch Config
           const cloudConfig = await fetchConfigFromSupabase(organizationId);
 
+          // 3. Latest import id, for the "solo esta importación" toggle
+          const latestImportId = await fetchLatestImportId(organizationId).catch(() => null);
+
           set({
             students: cloudStudents,
             config: cloudConfig ? { ...get().config, ...cloudConfig } : get().config,
             hasData: cloudStudents.length > 0,
             isLoadingFromSupabase: false,
             hasSyncedOnce: true,
+            latestImportId,
           });
         } catch (err: any) {
           console.warn("Could not sync from Supabase, relying on local state:", err);
@@ -119,6 +131,10 @@ export const useStore = create<AppState>()(
           students,
           hasData: students.length > 0,
           imports: importRecord ? [importRecord, ...get().imports].slice(0, 50) : get().imports,
+          // A fresh import just finished — default to showing exactly what was
+          // just imported instead of the whole cumulative roster; the user can
+          // still toggle "ver todos los socios" to see everyone.
+          ...(importRecord ? { latestImportId: importRecord.id, showOnlyLastImport: true } : {}),
         });
       },
 
@@ -155,6 +171,7 @@ export const useStore = create<AppState>()(
               fechaAlta: p.fechaAlta,
               ultimaAsistencia: p.ultimaAsistencia,
               observacion: p.observacion,
+              lastImportId: null,
               createdAt: now,
               updatedAt: now,
               snapshots: [snapshotOf(p)],
@@ -358,6 +375,7 @@ export const useStore = create<AppState>()(
         imports: state.imports,
         hasData: state.hasData,
         showHistorico: state.showHistorico,
+        showOnlyLastImport: state.showOnlyLastImport,
       }),
     },
   ),

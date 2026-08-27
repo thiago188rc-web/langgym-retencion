@@ -351,6 +351,13 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
         </div>
 
         {!failed && (
+          <p className="border-b border-border bg-surface/40 px-6 py-2.5 text-[12px] text-muted">
+            El panel va a mostrar por default solo los socios de esta importación. Podés ver el resto de la
+            base con el botón "Ver todos los socios" en la parte de arriba del panel.
+          </p>
+        )}
+
+        {!failed && (
           <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StatTile icon={<Users size={18} className="text-accent" />} value={outcome.total} label="Procesados" tone="bg-accent/12" />
             <StatTile icon={<UserPlus size={18} className="text-success" />} value={outcome.nuevos} label="Nuevos" tone="bg-success/12" />
