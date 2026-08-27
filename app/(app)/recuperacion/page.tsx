@@ -5,12 +5,13 @@ import { ChevronLeft, ChevronRight, HeartPulse } from "lucide-react";
 import { motion } from "framer-motion";
 import { useStore } from "@/lib/store";
 import { getAusentes, groupByBucket } from "@/lib/selectors";
-import { filterRelevantStudents } from "@/lib/retention";
+import { filterRelevantStudents, filterByImport } from "@/lib/retention";
 import { StudentCard } from "@/components/students/StudentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { Button } from "@/components/ui/Button";
 import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
+import { LastImportFilterBanner } from "@/components/shared/LastImportFilterBanner";
 import { PanelLoading } from "@/components/shared/PanelLoading";
 import { cn } from "@/lib/utils";
 import type { AusenciaBucket } from "@/lib/retention";
@@ -31,14 +32,21 @@ export default function RecuperacionPage() {
   const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const showHistorico = useStore((s) => s.showHistorico);
+  const showOnlyLastImport = useStore((s) => s.showOnlyLastImport);
+  const latestImportId = useStore((s) => s.latestImportId);
   const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
   const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
   const [filter, setFilter] = useState<Filter>("all");
   const [currentPage, setCurrentPage] = useState(1);
 
+  const importFiltered = useMemo(
+    () => (showOnlyLastImport ? filterByImport(allStudents, latestImportId) : allStudents),
+    [allStudents, showOnlyLastImport, latestImportId],
+  );
+
   const students = useMemo(
-    () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
-    [allStudents, showHistorico],
+    () => (showHistorico ? importFiltered : filterRelevantStudents(importFiltered)),
+    [importFiltered, showHistorico],
   );
 
   const { items, groups } = useMemo(() => {
@@ -68,7 +76,8 @@ export default function RecuperacionPage() {
 
   return (
     <div className="space-y-6">
-      <HistoricoFilterBanner totalCount={allStudents.length} relevantCount={students.length} />
+      <LastImportFilterBanner totalCount={allStudents.length} filteredCount={importFiltered.length} />
+      <HistoricoFilterBanner totalCount={importFiltered.length} relevantCount={students.length} />
 
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map((tab) => (

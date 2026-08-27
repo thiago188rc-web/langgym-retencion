@@ -261,9 +261,36 @@ export async function syncExcelImportToSupabase(
   }
   const permanecenCount = importedSocioSet.size - nuevosCount;
 
-  // 2. Perform chunked batch insert for new students (100 per chunk)
-  if (toInsert.length > 0) {
-    const insertChunks = chunkArray(toInsert, 100);
+  // 2. Audit log in import_records — created BEFORE the student writes below
+  // so its id can be stamped onto every student this import touches
+  // (last_import_id), letting the UI offer a "solo esta importación" view.
+  const { data: importRecRow } = await supabase
+    .from("import_records")
+    .insert({
+      organization_id: organizationId,
+      user_id: user?.id ?? null,
+      archivo: fileName,
+      nuevos: nuevosCount,
+      actualizados: actualizadosCount,
+      bajas: bajasCount,
+      permanecen: permanecenCount,
+      errores: erroresCount,
+      total: importedList.length,
+      fecha: todayIso,
+    })
+    .select("*")
+    .single();
+
+  const lastImportId = importRecRow?.id ?? null;
+  const toInsertWithImport = toInsert.map((row) => ({ ...row, last_import_id: lastImportId }));
+  const toUpdateWithImport = toUpdate.map((upd) => ({
+    ...upd,
+    data: { ...upd.data, last_import_id: lastImportId },
+  }));
+
+  // 3. Perform chunked batch insert for new students (100 per chunk)
+  if (toInsertWithImport.length > 0) {
+    const insertChunks = chunkArray(toInsertWithImport, 100);
     for (const chunk of insertChunks) {
       const { data: insertedStudents, error: insErr } = await supabase
         .from("students")
@@ -289,9 +316,9 @@ export async function syncExcelImportToSupabase(
     }
   }
 
-  // 3. Perform parallelized batch updates in concurrent batches of 15
-  if (toUpdate.length > 0) {
-    const updateBatches = chunkArray(toUpdate, 15);
+  // 4. Perform parallelized batch updates in concurrent batches of 15
+  if (toUpdateWithImport.length > 0) {
+    const updateBatches = chunkArray(toUpdateWithImport, 15);
     for (const batch of updateBatches) {
       await Promise.all(
         batch.map((upd) => supabase.from("students").update(upd.data).eq("id", upd.id)),
@@ -299,31 +326,13 @@ export async function syncExcelImportToSupabase(
     }
   }
 
-  // 4. Batch insert snapshots in chunks of 100
+  // 5. Batch insert snapshots in chunks of 100
   if (snapshotInserts.length > 0) {
     const snapChunks = chunkArray(snapshotInserts, 100);
     for (const chunk of snapChunks) {
       await supabase.from("snapshots").insert(chunk);
     }
   }
-
-  // 5. Audit log in import_records
-  const { data: importRecRow } = await supabase
-    .from("import_records")
-    .insert({
-      organization_id: organizationId,
-      user_id: user?.id ?? null,
-      archivo: fileName,
-      nuevos: nuevosCount,
-      actualizados: actualizadosCount,
-      bajas: bajasCount,
-      permanecen: permanecenCount,
-      errores: erroresCount,
-      total: importedList.length,
-      fecha: todayIso,
-    })
-    .select("*")
-    .single();
 
   const importRecord: ImportRecord = {
     id: importRecRow?.id || `imp-${Date.now()}`,

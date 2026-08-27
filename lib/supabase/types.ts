@@ -142,6 +142,7 @@ export interface Database {
           fecha_alta: string | null;
           ultima_asistencia: string | null;
           observacion: string | null;
+          last_import_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -162,6 +163,7 @@ export interface Database {
           fecha_alta?: string | null;
           ultima_asistencia?: string | null;
           observacion?: string | null;
+          last_import_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -182,6 +184,7 @@ export interface Database {
           fecha_alta?: string | null;
           ultima_asistencia?: string | null;
           observacion?: string | null;
+          last_import_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

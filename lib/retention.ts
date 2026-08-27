@@ -198,3 +198,13 @@ export function filterRelevantStudents(
 ): Student[] {
   return students.filter((s) => isRelevantStudent(s, cutoffMonths));
 }
+
+/**
+ * Narrows the roster down to just the students touched by one specific
+ * import (nuevos + actualizados de ese archivo) — lets the panel show
+ * exactly "lo que acabo de importar" instead of the whole cumulative base.
+ */
+export function filterByImport(students: Student[], importId: string | null): Student[] {
+  if (!importId) return students;
+  return students.filter((s) => s.lastImportId === importId);
+}

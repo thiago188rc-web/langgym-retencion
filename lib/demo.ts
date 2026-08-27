@@ -64,6 +64,7 @@ export function buildDemoStudents(): Student[] {
       fechaAlta: dateOffset(120 + Number(s.idSocio.slice(-2))),
       ultimaAsistencia: ult,
       observacion: null,
+      lastImportId: null,
       createdAt: now,
       updatedAt: now,
       snapshots: [

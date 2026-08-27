@@ -17,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { computeMetrics, filterRelevantStudents } from "@/lib/retention";
+import { computeMetrics, filterRelevantStudents, filterByImport } from "@/lib/retention";
 import { getPrioridadHoy } from "@/lib/selectors";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PriorityRow } from "@/components/dashboard/PriorityRow";
@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { HistoricoFilterBanner } from "@/components/shared/HistoricoFilterBanner";
+import { LastImportFilterBanner } from "@/components/shared/LastImportFilterBanner";
 import { PanelLoading } from "@/components/shared/PanelLoading";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -39,12 +40,19 @@ export default function DashboardPage() {
   const allStudents = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const showHistorico = useStore((s) => s.showHistorico);
+  const showOnlyLastImport = useStore((s) => s.showOnlyLastImport);
+  const latestImportId = useStore((s) => s.latestImportId);
   const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
   const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
 
+  const importFiltered = useMemo(
+    () => (showOnlyLastImport ? filterByImport(allStudents, latestImportId) : allStudents),
+    [allStudents, showOnlyLastImport, latestImportId],
+  );
+
   const students = useMemo(
-    () => (showHistorico ? allStudents : filterRelevantStudents(allStudents)),
-    [allStudents, showHistorico],
+    () => (showHistorico ? importFiltered : filterRelevantStudents(importFiltered)),
+    [importFiltered, showHistorico],
   );
 
   const m = useMemo(() => {
@@ -62,7 +70,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <HistoricoFilterBanner totalCount={allStudents.length} relevantCount={students.length} />
+      <LastImportFilterBanner totalCount={allStudents.length} filteredCount={importFiltered.length} />
+      <HistoricoFilterBanner totalCount={importFiltered.length} relevantCount={students.length} />
 
       {students.length === 0 || !m ? (
         <EmptyState

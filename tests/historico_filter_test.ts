@@ -1,7 +1,7 @@
 // Run with: npx tsx --test tests/historico_filter_test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isRelevantStudent, filterRelevantStudents, HISTORICO_CUTOFF_MONTHS } from "../lib/retention";
+import { isRelevantStudent, filterRelevantStudents, filterByImport, HISTORICO_CUTOFF_MONTHS } from "../lib/retention";
 import type { Student } from "../lib/types";
 
 function makeStudent(overrides: Partial<Student>): Student {
@@ -21,6 +21,7 @@ function makeStudent(overrides: Partial<Student>): Student {
     fechaAlta: null,
     ultimaAsistencia: null,
     observacion: null,
+    lastImportId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     snapshots: [],
@@ -72,4 +73,20 @@ test("filterRelevantStudents keeps only relevant ones, preserving the rest for t
 
 test("default cutoff is 12 months, matching what's shown in the UI banner", () => {
   assert.equal(HISTORICO_CUTOFF_MONTHS, 12);
+});
+
+test("filterByImport keeps only students touched by the given import, regardless of fechaFin", () => {
+  const fromImport = makeStudent({ id: "a", lastImportId: "imp-1", fechaFin: daysAgo(500) });
+  const other = makeStudent({ id: "b", lastImportId: "imp-2", fechaFin: daysAgo(1) });
+  const untouched = makeStudent({ id: "c", lastImportId: null, fechaFin: null });
+
+  const result = filterByImport([fromImport, other, untouched], "imp-1");
+  assert.deepEqual(result.map((s) => s.id), ["a"]);
+});
+
+test("filterByImport with a null importId returns everyone unchanged (no import happened yet)", () => {
+  const a = makeStudent({ id: "a" });
+  const b = makeStudent({ id: "b" });
+  const result = filterByImport([a, b], null);
+  assert.equal(result.length, 2);
 });
