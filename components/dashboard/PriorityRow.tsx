@@ -22,7 +22,13 @@ export function PriorityRow({ item, index }: { item: StudentWithSignals; index: 
       : "Cuota vencida"
     : signals.diasSinVenirEsProxy
       ? `Cuota venció ${relativeDays(student.fechaFin)}`
-      : `Sin venir ${relativeDays(student.ultimaAsistencia)}`;
+      : student.ultimaAsistencia
+        ? `Sin venir ${relativeDays(student.ultimaAsistencia)}`
+        : // Neither attendance nor vencimiento on file — say so plainly instead
+          // of rendering a confusing "Sin venir sin datos".
+          student.membresia
+          ? `${student.membresia} · al día`
+          : "Sin datos de cuota";
 
   return (
     <motion.div
