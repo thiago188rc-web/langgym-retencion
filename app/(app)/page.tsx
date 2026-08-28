@@ -66,8 +66,13 @@ export default function DashboardPage() {
 
   const prioridad = useMemo(() => {
     if (students.length === 0) return [];
+    // Viendo una importación puntual: mostrá TODOS los socios de ese archivo
+    // para poder escribirles, no solo los que están en riesgo.
+    if (showOnlyLastImport) {
+      return getPrioridadHoy(students, config, students.length, { includeAll: true });
+    }
     return getPrioridadHoy(students, config, 7);
-  }, [students, config]);
+  }, [students, config, showOnlyLastImport]);
 
   if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
   if (allStudents.length === 0) return <NoData />;
@@ -98,11 +103,15 @@ export default function DashboardPage() {
                 <Flame size={18} />
               </div>
               <div>
-                <h2 className="text-[15px] font-semibold">A quién escribirle hoy</h2>
+                <h2 className="text-[15px] font-semibold">
+                  {showOnlyLastImport ? "Socios de tu importación" : "A quién escribirle hoy"}
+                </h2>
                 <p className="text-[12px] text-muted">
-                  {prioridad.length > 0
-                    ? `${prioridad.length} de ${students.length} socios necesitan contacto`
-                    : "Ordenado por urgencia"}
+                  {showOnlyLastImport
+                    ? `${prioridad.length} socios · los más urgentes primero`
+                    : prioridad.length > 0
+                      ? `${prioridad.length} de ${students.length} socios necesitan contacto`
+                      : "Ordenado por urgencia"}
                 </p>
               </div>
             </div>
