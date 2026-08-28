@@ -85,7 +85,10 @@ export async function syncExcelImportToSupabase(
         .select(
           "id, id_socio, nombre, apellido, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
         )
-        .eq("organization_id", organizationId),
+        .eq("organization_id", organizationId)
+        // Unique sort key: without it the paged reads below can repeat or skip
+        // rows, which here would mean re-inserting an existing socio as "nuevo".
+        .order("id", { ascending: true }),
     );
   } catch {
     throw new Error("No pudimos consultar los alumnos existentes en el servidor.");
@@ -366,21 +369,28 @@ export async function syncExcelImportToSupabase(
   // 6. Reload full student list with preserved follow-ups and snapshots
   // (paginated — same 1000-row cap applies here).
   const allFreshRows = await fetchAllRows<any>(() =>
-    supabase.from("students").select("*").eq("organization_id", organizationId).order("nombre", { ascending: true }),
+    supabase
+      .from("students")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("nombre", { ascending: true })
+      .order("id", { ascending: true }),
   ).catch(() => [] as any[]);
 
   const allFollowUps = await fetchAllRows<any>(() =>
     supabase
       .from("follow_ups")
       .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
-      .eq("organization_id", organizationId),
+      .eq("organization_id", organizationId)
+      .order("id", { ascending: true }),
   ).catch(() => [] as any[]);
 
   const allSnapshots = await fetchAllRows<any>(() =>
     supabase
       .from("snapshots")
       .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
-      .eq("organization_id", organizationId),
+      .eq("organization_id", organizationId)
+      .order("id", { ascending: true }),
   ).catch(() => [] as any[]);
 
   const fuByStudent: Record<string, any[]> = {};

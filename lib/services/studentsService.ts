@@ -91,7 +91,11 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
           "id, organization_id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion, last_import_id, created_at, updated_at",
         )
         .eq("organization_id", organizationId)
-        .order("nombre", { ascending: true }),
+        // `nombre` is NOT unique (dozens of students share a first name), so it
+        // can't determine the page order on its own — `id` is the tie-breaker
+        // that keeps paging stable across requests.
+        .order("nombre", { ascending: true })
+        .order("id", { ascending: true }),
     );
   } catch {
     throw new Error("No se pudieron cargar los alumnos desde el servidor.");
@@ -103,7 +107,8 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
       .from("follow_ups")
       .select("id, student_id, fecha, tipo, canal, mensaje, resultado")
       .eq("organization_id", organizationId)
-      .order("fecha", { ascending: false }),
+      .order("fecha", { ascending: false })
+      .order("id", { ascending: true }),
   ).catch(() => [] as FollowUpRow[]);
 
   // 3. Fetch snapshots (paginated)
@@ -112,7 +117,8 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
       .from("snapshots")
       .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
       .eq("organization_id", organizationId)
-      .order("fecha", { ascending: false }),
+      .order("fecha", { ascending: false })
+      .order("id", { ascending: true }),
   ).catch(() => [] as SnapshotRow[]);
 
   const fuByStudent: Record<string, FollowUpRow[]> = {};
