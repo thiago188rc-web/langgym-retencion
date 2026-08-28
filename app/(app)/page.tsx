@@ -50,10 +50,14 @@ export default function DashboardPage() {
     [allStudents, showOnlyLastImport, latestImportId],
   );
 
-  const students = useMemo(
-    () => (showHistorico ? importFiltered : filterRelevantStudents(importFiltered)),
-    [importFiltered, showHistorico],
-  );
+  const students = useMemo(() => {
+    // "Solo última importación" ya es una selección explícita del usuario —
+    // no le vuelvas a aplicar el filtro de histórico encima, o alguien con
+    // membresías vencidas hace tiempo en su archivo recién importado
+    // desaparece del panel sin explicación.
+    if (showOnlyLastImport) return importFiltered;
+    return showHistorico ? importFiltered : filterRelevantStudents(importFiltered);
+  }, [importFiltered, showHistorico, showOnlyLastImport]);
 
   const m = useMemo(() => {
     if (students.length === 0) return null;
@@ -76,8 +80,12 @@ export default function DashboardPage() {
       {students.length === 0 || !m ? (
         <EmptyState
           icon={Users}
-          title="No hay socios recientes"
-          description="Todos tus socios importados vencieron hace más de 12 meses. Activá 'ver histórico completo' arriba para verlos."
+          title={showOnlyLastImport ? "Esta importación no trajo socios" : "No hay socios recientes"}
+          description={
+            showOnlyLastImport
+              ? "El archivo no tiene socios cargados, o no se pudo asociar ninguno. Revisá el resumen de la importación."
+              : "Todos tus socios importados vencieron hace más de 12 meses. Activá 'ver histórico completo' arriba para verlos."
+          }
         />
       ) : (
       <>

@@ -44,10 +44,10 @@ export default function RecuperacionPage() {
     [allStudents, showOnlyLastImport, latestImportId],
   );
 
-  const students = useMemo(
-    () => (showHistorico ? importFiltered : filterRelevantStudents(importFiltered)),
-    [importFiltered, showHistorico],
-  );
+  const students = useMemo(() => {
+    if (showOnlyLastImport) return importFiltered;
+    return showHistorico ? importFiltered : filterRelevantStudents(importFiltered);
+  }, [importFiltered, showHistorico, showOnlyLastImport]);
 
   const { items, groups } = useMemo(() => {
     const items = getAusentes(students, config);
