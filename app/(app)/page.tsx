@@ -99,7 +99,11 @@ export default function DashboardPage() {
               </div>
               <div>
                 <h2 className="text-[15px] font-semibold">A quién escribirle hoy</h2>
-                <p className="text-[12px] text-muted">Ordenado por urgencia</p>
+                <p className="text-[12px] text-muted">
+                  {prioridad.length > 0
+                    ? `${prioridad.length} de ${students.length} socios necesitan contacto`
+                    : "Ordenado por urgencia"}
+                </p>
               </div>
             </div>
             <Link

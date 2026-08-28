@@ -53,7 +53,10 @@ export async function getUnlinkedClientProfiles(): Promise<{
     const studentList = await fetchAllRows<
       Pick<Student, "id" | "id_socio" | "nombre_completo" | "email" | "telefono" | "telefono_raw">
     >(() =>
-      supabase.from("students").select("id, id_socio, nombre_completo, email, telefono, telefono_raw"),
+      supabase
+        .from("students")
+        .select("id, id_socio, nombre_completo, email, telefono, telefono_raw")
+        .order("id", { ascending: true }),
     ).catch(() => []);
 
     const result: UnlinkedClientProfile[] = profiles.map((prof) => {

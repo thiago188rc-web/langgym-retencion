@@ -32,6 +32,9 @@ type Phase = "idle" | "processing" | "done";
 interface Outcome {
   archivo: string;
   total: number;
+  /** Rows actually present in the file, before any were skipped. Shown next to
+   * `total` so a gap ("16 filas · 14 importados") is never silent. */
+  filasLeidas: number;
   nuevos: number;
   actualizados: number;
   sinCambios: number;
@@ -112,6 +115,7 @@ export function ImportFlow() {
         setOutcome({
           archivo: file.name,
           total: result.totalFilas,
+          filasLeidas: result.totalFilas,
           nuevos: 0,
           actualizados: 0,
           sinCambios: 0,
@@ -177,6 +181,7 @@ export function ImportFlow() {
       setOutcome({
         archivo: file.name,
         total: result.parsedStudents.length,
+        filasLeidas: result.totalFilas,
         nuevos,
         actualizados,
         sinCambios,
@@ -207,6 +212,7 @@ export function ImportFlow() {
     setOutcome({
       archivo: "Datos de ejemplo",
       total: 20,
+      filasLeidas: 20,
       nuevos: 20,
       actualizados: 0,
       sinCambios: 0,
@@ -338,7 +344,18 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
               {failed ? "No pudimos leer este archivo" : "Importación completada"}
             </h2>
             <p className="text-sm text-muted">
-              {outcome.archivo} · {outcome.total} registros procesados
+              {outcome.archivo} ·{" "}
+              {outcome.filasLeidas > outcome.total ? (
+                <>
+                  {outcome.filasLeidas} filas en el archivo ·{" "}
+                  <span className="font-semibold text-fg">{outcome.total} importados</span> ·{" "}
+                  <span className="font-semibold text-warning">
+                    {outcome.filasLeidas - outcome.total} omitidos
+                  </span>
+                </>
+              ) : (
+                <>{outcome.total} registros procesados</>
+              )}
             </p>
           </div>
           {!failed && (
