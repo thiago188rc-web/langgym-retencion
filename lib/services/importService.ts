@@ -136,6 +136,11 @@ export async function syncExcelImportToSupabase(
     };
   }> = [];
 
+  // Students matched this import but had nothing to change — still part of
+  // "this import", so they still need last_import_id stamped, just without
+  // rewriting every other field.
+  const unchangedIds: string[] = [];
+
   const snapshotInserts: Array<{
     organization_id: string;
     student_id: string;
@@ -234,6 +239,7 @@ export async function syncExcelImportToSupabase(
         });
       } else {
         sinCambiosCount++;
+        unchangedIds.push(existing.id);
       }
 
       // Snapshot del estado actual en esta importación
@@ -323,6 +329,16 @@ export async function syncExcelImportToSupabase(
       await Promise.all(
         batch.map((upd) => supabase.from("students").update(upd.data).eq("id", upd.id)),
       );
+    }
+  }
+
+  // 4b. Stamp last_import_id on students that matched this import but had
+  // nothing else to change — otherwise they'd silently drop out of "solo
+  // esta importación" every time a re-import doesn't alter their data.
+  if (unchangedIds.length > 0 && lastImportId) {
+    const idBatches = chunkArray(unchangedIds, 200);
+    for (const batch of idBatches) {
+      await supabase.from("students").update({ last_import_id: lastImportId }).in("id", batch);
     }
   }
 
