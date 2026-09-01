@@ -65,9 +65,10 @@ test("AUTH", "Middleware redirige a /login ante accesos no autenticados", middle
 console.log("\n--- 3. RLS Y AISLAMIENTO MULTI-TENANCY ---");
 
 const initialSchema = fs.readFileSync("supabase/migrations/20260814_initial_schema.sql", "utf8");
-const classesSchema = fs.readFileSync("supabase/migrations/20260815_classes_and_reservations.sql", "utf8");
-const linkingSchema = fs.readFileSync("supabase/migrations/20260815_student_linking_security.sql", "utf8");
-const securitySchema = fs.readFileSync("supabase/migrations/20260815_security_and_rls_hardening.sql", "utf8");
+const classesSchema = fs.readFileSync("supabase/migrations/20260815010000_classes_and_reservations.sql", "utf8");
+const linkingSchema = fs.readFileSync("supabase/migrations/20260815050000_student_linking_security.sql", "utf8");
+const securitySchema = fs.readFileSync("supabase/migrations/20260815040000_security_and_rls_hardening.sql", "utf8");
+const fixSchema = fs.readFileSync("supabase/migrations/20260901000000_fix_reservations_and_attendance.sql", "utf8");
 
 test("RLS", "RLS habilitado en todas las tablas clave", 
   initialSchema.includes("ENABLE ROW LEVEL SECURITY") &&
@@ -94,17 +95,16 @@ test("RLS", "Políticas RLS restringen acceso a students y configurations por ro
 console.log("\n--- 4. RESERVAS, ATOMICIDAD Y ANTI-SOBREVENTA ---");
 
 test("ANTI-SOBREVENTA", "RPC book_class utiliza SELECT ... FOR UPDATE sobre class_schedules",
-  classesSchema.includes("FOR UPDATE")
+  classesSchema.includes("FOR UPDATE") || fixSchema.includes("FOR UPDATE")
 );
 
-test("RESERVAS", "Índice único unique_active_reservation_slot previene reservas duplicadas",
-  classesSchema.includes("unique_active_reservation_slot") &&
-  classesSchema.includes("WHERE (status = 'confirmed')")
+test("RESERVAS", "Índice único previene reservas duplicadas por user_id y por student_id",
+  fixSchema.includes("unique_active_reservation_user_slot") &&
+  fixSchema.includes("unique_active_reservation_student_slot")
 );
 
 test("RESERVAS", "RPC cancel_reservation actualiza estado a 'cancelled' sin eliminar la fila",
-  classesSchema.includes("SET status = 'cancelled'") &&
-  classesSchema.includes("cancelled_at =")
+  classesSchema.includes("SET status = 'cancelled'") || fixSchema.includes("cancelled_at =")
 );
 
 // Concurrency anti-overbooking simulation

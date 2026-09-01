@@ -271,6 +271,8 @@ export interface Database {
           archivo: string;
           nuevos: number;
           actualizados: number;
+          bajas: number;
+          permanecen: number;
           errores: number;
           total: number;
           created_at: string;
@@ -283,6 +285,8 @@ export interface Database {
           archivo: string;
           nuevos?: number;
           actualizados?: number;
+          bajas?: number;
+          permanecen?: number;
           errores?: number;
           total?: number;
           created_at?: string;
@@ -295,6 +299,8 @@ export interface Database {
           archivo?: string;
           nuevos?: number;
           actualizados?: number;
+          bajas?: number;
+          permanecen?: number;
           errores?: number;
           total?: number;
           created_at?: string;
@@ -379,7 +385,7 @@ export interface Database {
           organization_id: string;
           class_schedule_id: string;
           class_type_id: string;
-          user_id: string;
+          user_id: string | null;
           student_id: string | null;
           class_date: string;
           status: ReservationStatus;
@@ -393,7 +399,7 @@ export interface Database {
           organization_id: string;
           class_schedule_id: string;
           class_type_id: string;
-          user_id: string;
+          user_id?: string | null;
           student_id?: string | null;
           class_date: string;
           status?: ReservationStatus;
@@ -407,7 +413,7 @@ export interface Database {
           organization_id?: string;
           class_schedule_id?: string;
           class_type_id?: string;
-          user_id?: string;
+          user_id?: string | null;
           student_id?: string | null;
           class_date?: string;
           status?: ReservationStatus;
@@ -558,7 +564,7 @@ export interface Database {
         };
         Returns: Array<{
           reservation_id: string;
-          user_id: string;
+          user_id: string | null;
           student_id: string | null;
           status: string;
           created_at: string;
@@ -702,14 +708,6 @@ export interface Database {
     Views: {
       [_ in never]: never;
     };
-    // NOTE: this self-reference is redundant with the `Functions` block above
-    // and TypeScript flags it as a duplicate identifier — that's a pre-existing
-    // issue (predates this feature). Removing it makes `Functions` resolve
-    // strictly, which reveals a structural mismatch with the installed
-    // @supabase/supabase-js version's `.rpc()` generic across every call site
-    // in the app (not just this file). Left as-is to avoid a much larger,
-    // unrelated type-alignment pass; `next build` does not depend on it.
-    Functions: Database["public"]["Functions"];
     Enums: {
       user_role: UserRole;
       reservation_status: ReservationStatus;

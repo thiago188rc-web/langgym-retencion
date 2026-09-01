@@ -333,7 +333,11 @@ export default function AdminClassesPage() {
     try {
       const res = await adminManualBookClass(scheduleId, selectedDate, studentId);
       if (res.success) {
-        toast.push("Alumno inscripto correctamente en la clase.", "success");
+        if (res.alreadyBooked) {
+          toast.push(res.message || "El alumno ya se encuentra anotado en este turno.", "info");
+        } else {
+          toast.push("Alumno inscripto correctamente en la clase.", "success");
+        }
         setManualBookingOpen(false);
 
         if (selectedClassForAttendees) {

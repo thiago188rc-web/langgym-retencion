@@ -89,8 +89,14 @@ function parseBookingError(rawError: string | null | undefined): { message: stri
   if (err.includes("cupo completo") || err.includes("no quedan lugares")) {
     return { message: "Cupo completo. No quedan lugares disponibles para este horario.", code: "CAPACITY_FULL" };
   }
-  if (err.includes("ya tenés una reserva") || err.includes("unique_active_reservation_slot")) {
-    return { message: "Ya tenés una reserva confirmada para este horario.", code: "ALREADY_RESERVED" };
+  if (
+    err.includes("ya tenés una reserva") ||
+    err.includes("ya se encuentra anotado") ||
+    err.includes("unique_active_reservation_slot") ||
+    err.includes("unique_active_reservation_user_slot") ||
+    err.includes("unique_active_reservation_student_slot")
+  ) {
+    return { message: "El alumno ya se encuentra anotado en este horario.", code: "ALREADY_RESERVED" };
   }
   if (err.includes("no tiene cupo definido")) {
     return { message: "Esta clase aún no tiene cupo definido por el gimnasio.", code: "CAPACITY_NOT_SET" };

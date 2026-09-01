@@ -158,7 +158,8 @@ export function BajasList({ bajas }: BajasListProps) {
                           <WhatsappButton
                             student={s}
                             tipo="recuperacion"
-                            compact
+                            message=""
+                            size="sm"
                             label="WhatsApp"
                           />
                         )}
