@@ -22,6 +22,10 @@ export interface ClassRosterGroup {
 /**
  * Active class schedules for the org, each with who's currently signed up
  * (pending/active turno) — name and phone only, no billing/risk data.
+ *
+ * Source is strictly the REGISTERED ACCOUNTS (profiles) that picked a turno.
+ * The Excel padrón (`students`) is a separate circuit that feeds the admin
+ * retention/cobros panel and is deliberately NOT read here.
  */
 export async function getProfessorClassRoster(): Promise<{
   data: ClassRosterGroup[];
@@ -92,7 +96,10 @@ export interface DayClass {
   attendees: DayAttendee[];
 }
 
-/** Attendance sheet for one date: the classes running that day and who is expected. */
+/**
+ * Attendance sheet for one date: the classes running that day and who is
+ * expected — again, only registered accounts with an active turno.
+ */
 export async function getProfessorDayRoster(
   dateISO: string,
 ): Promise<{ data: DayClass[]; error: string | null }> {
