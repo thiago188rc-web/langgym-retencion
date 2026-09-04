@@ -56,6 +56,41 @@ export function todayISO(): string {
   return toLocalISO(new Date());
 }
 
+const DAYS_ES_FULL = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const MONTHS_ES_FULL = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+/**
+ * "YYYY-MM-DD" -> Date at LOCAL midnight.
+ *
+ * `new Date("2026-09-04")` parses as UTC midnight, which in Argentina (UTC-3)
+ * is 21:00 of the PREVIOUS day — so the attendance sheet would show the wrong
+ * weekday and the professor would mark the wrong class.
+ */
+export function parseLocalISO(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** "Hoy" / "Ayer" / "Mañana", else "Viernes 4 de septiembre". */
+export function humanDayLabel(iso: string, today: string = todayISO()): string {
+  if (iso === today) return "Hoy";
+
+  const ref = parseLocalISO(today);
+  const yesterday = new Date(ref);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (iso === toLocalISO(yesterday)) return "Ayer";
+
+  const tomorrow = new Date(ref);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (iso === toLocalISO(tomorrow)) return "Mañana";
+
+  const d = parseLocalISO(iso);
+  return `${DAYS_ES_FULL[d.getDay()]} ${d.getDate()} de ${MONTHS_ES_FULL[d.getMonth()]}`;
+}
+
 function atMidnight(iso: string): number {
   const clean = iso.slice(0, 10);
   const [y, m, d] = clean.split("-").map(Number);

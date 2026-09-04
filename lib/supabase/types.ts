@@ -521,6 +521,35 @@ export interface Database {
           enrollment_status: string | null;
         }>;
       };
+      get_professor_day_roster: {
+        Args: {
+          p_date: string;
+        };
+        Returns: Array<{
+          class_schedule_id: string;
+          class_type_id: string;
+          class_name: string;
+          class_color: string | null;
+          day_of_week: number;
+          start_time: string;
+          end_time: string | null;
+          capacity: number | null;
+          user_id: string;
+          attendee_name: string | null;
+          attendee_phone: string | null;
+          reservation_id: string | null;
+          attendance_status: string;
+        }>;
+      };
+      professor_mark_attendance: {
+        Args: {
+          p_schedule_id: string;
+          p_class_date: string;
+          p_user_id: string;
+          p_status: string;
+        };
+        Returns: Json;
+      };
       link_profile_to_student: {
         Args: {
           p_profile_id: string;
