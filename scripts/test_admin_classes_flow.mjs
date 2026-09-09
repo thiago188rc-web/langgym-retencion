@@ -32,6 +32,8 @@ const mockDb = {
     { id: "sch-flexi-mon-17", class_type_id: "type-flexi", day_of_week: 1, start_time: "17:00", capacity: null, active: true },
     // Martes (2)
     { id: "sch-stretch-tue-09", class_type_id: "type-stretch", day_of_week: 2, start_time: "09:00", capacity: 15, active: true },
+    // Viernes (5)
+    { id: "sch-yoga-fri-19", class_type_id: "type-yoga", day_of_week: 5, start_time: "19:00", capacity: null, active: true },
   ],
   reservations: [],
   students: [

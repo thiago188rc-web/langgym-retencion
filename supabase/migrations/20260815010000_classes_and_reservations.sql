@@ -487,10 +487,12 @@ BEGIN
         -- Horarios Yoga:
         -- Lunes (1): 08:00
         -- Miércoles (3): 08:00
+        -- Viernes (5): 19:00
         INSERT INTO public.class_schedules (organization_id, class_type_id, day_of_week, start_time, capacity)
         VALUES 
             (r_org.id, v_yoga_id, 1, '08:00', NULL),
-            (r_org.id, v_yoga_id, 3, '08:00', NULL)
+            (r_org.id, v_yoga_id, 3, '08:00', NULL),
+            (r_org.id, v_yoga_id, 5, '19:00', NULL)
         ON CONFLICT (organization_id, class_type_id, day_of_week, start_time) DO NOTHING;
 
         -- 3. FLEXI-RUN (Cupo: NULL - Pendiente de confirmar por Admin)

@@ -31,6 +31,7 @@ class MockClassEngine {
       { id: "sched-func-18", name: "Entrenamiento Funcional", dayOfWeek: 1, startTime: "18:00", capacity: 30 },
       { id: "sched-stretching-19", name: "Stretching", dayOfWeek: 2, startTime: "19:00", capacity: 15 },
       { id: "sched-yoga-08", name: "Yoga", dayOfWeek: 1, startTime: "08:00", capacity: null }, // Pending
+      { id: "sched-yoga-fri-19", name: "Yoga", dayOfWeek: 5, startTime: "19:00", capacity: null }, // Pending
     ];
     this.reservations = [];
   }
