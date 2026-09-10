@@ -24,6 +24,7 @@ import { TurnoStatusCard } from "@/components/client/TurnoStatusCard";
 import { TurnoRequestList } from "@/components/client/TurnoRequestList";
 import { ProfileModal } from "@/components/client/ProfileModal";
 import { CancelConfirmationModal } from "@/components/client/CancelConfirmationModal";
+import { BookClassModal } from "@/components/client/BookClassModal";
 import { useToast, ToastViewport } from "@/components/ui/Toast";
 import { Dumbbell } from "lucide-react";
 
@@ -44,6 +45,7 @@ export default function ClientPortalPage() {
   const [submittingRequest, setSubmittingRequest] = useState(false);
 
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [bookModalOpen, setBookModalOpen] = useState(false);
 
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [reservationToCancel, setReservationToCancel] = useState<UserReservationItem | null>(null);
@@ -114,19 +116,23 @@ export default function ClientPortalPage() {
   }, [user, profile, loadingEnrollment, myEnrollments, fetchSchedules]);
 
   // 5. Confirm the weekly schedule selection — by only once (see request_class_enrollments_bulk)
-  const handleConfirmSchedules = async (scheduleIds: string[]) => {
-    if (scheduleIds.length === 0) return;
+  const handleConfirmSchedules = async (scheduleIds: string[]): Promise<boolean> => {
+    if (scheduleIds.length === 0) return false;
     setSubmittingRequest(true);
     try {
       const res = await requestClassEnrollments(scheduleIds);
       if (res.success) {
         toast.push("¡Horarios anotados! Te avisamos cuando el staff confirme tu pago.", "success");
         await fetchEnrollments();
+        await fetchReservations();
+        return true;
       } else {
         toast.push(res.error || "No se pudo enviar la solicitud.", "danger");
+        return false;
       }
     } catch {
       toast.push("Ocurrió un error inesperado al conectar.", "danger");
+      return false;
     } finally {
       setSubmittingRequest(false);
     }
@@ -179,7 +185,7 @@ export default function ClientPortalPage() {
   };
 
   const handleExploreClasses = () => {
-    turnoSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+    setBookModalOpen(true);
   };
 
   if (authLoading || !profile) {
@@ -291,6 +297,15 @@ export default function ClientPortalPage() {
         loading={cancelling}
         onClose={() => setCancelModalOpen(false)}
         onConfirm={handleConfirmCancel}
+      />
+
+      <BookClassModal
+        open={bookModalOpen}
+        onClose={() => setBookModalOpen(false)}
+        onSuccess={async () => {
+          await fetchReservations();
+          await fetchEnrollments();
+        }}
       />
 
       <ToastViewport />

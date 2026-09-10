@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Database, ReservationStatus } from "@/lib/supabase/types";
-import { getArgentinaTodayISO } from "@/lib/dates";
+import { getArgentinaTodayISO, shiftDateDays, getDayOfWeekFromISO } from "@/lib/dates";
 
 export interface AvailableClass {
   scheduleId: string;
@@ -235,6 +235,49 @@ export async function cancelReservation(reservationId: string): Promise<{ succes
   try {
     const supabase = createClient();
 
+    if (reservationId.startsWith("auto-")) {
+      const parts = reservationId.replace("auto-", "").split("_");
+      const scheduleId = parts[0];
+      const classDate = parts[1];
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: "No autenticado" };
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id, student_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile) return { success: false, error: "Perfil no encontrado" };
+
+      const { data: sched } = await supabase
+        .from("class_schedules")
+        .select("class_type_id")
+        .eq("id", scheduleId)
+        .single();
+
+      const { error: insErr } = await supabase.from("reservations").insert({
+        organization_id: profile.organization_id,
+        class_schedule_id: scheduleId,
+        class_type_id: sched?.class_type_id,
+        user_id: user.id,
+        student_id: profile.student_id,
+        class_date: classDate,
+        status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+        notes: "Cancelado por alumno desde el portal",
+      });
+
+      if (insErr) {
+        console.error("Error inserting cancellation record:", insErr);
+        return { success: false, error: "No se pudo registrar la cancelación." };
+      }
+
+      return { success: true, error: null };
+    }
+
     const { data, error } = await supabase.rpc("cancel_reservation", {
       p_reservation_id: reservationId,
     });
@@ -291,7 +334,7 @@ export async function getMyReservations(options?: {
       .order("created_at", { ascending: false });
 
     if (options?.filter === "upcoming") {
-      query = query.gte("class_date", today).eq("status", "confirmed");
+      query = query.gte("class_date", today);
     } else if (options?.filter === "past") {
       query = query.or(`class_date.lt.${today},status.neq.confirmed`);
     }
@@ -303,24 +346,102 @@ export async function getMyReservations(options?: {
       return { data: [], error: parseBookingError(error.message).message };
     }
 
-    if (!data || !Array.isArray(data)) {
-      return { data: [], error: null };
+    const rawRows = Array.isArray(data) ? data : [];
+    const cancelledMap = new Set<string>();
+    const list: UserReservationItem[] = [];
+
+    for (const item of rawRows) {
+      const key = `${item.class_schedule_id}_${item.class_date}`;
+      if (item.status === "cancelled") {
+        cancelledMap.add(key);
+      } else if (item.status === "confirmed" || options?.filter !== "upcoming") {
+        list.push({
+          id: item.id,
+          classScheduleId: item.class_schedule_id,
+          classTypeId: item.class_type_id,
+          className: item.class_types?.name || "Clase",
+          classDescription: item.class_types?.description || null,
+          classColor: item.class_types?.color || "#22a058",
+          classDate: item.class_date,
+          startTime: item.class_schedules?.start_time ? String(item.class_schedules.start_time).slice(0, 5) : "—",
+          endTime: item.class_schedules?.end_time ? String(item.class_schedules.end_time).slice(0, 5) : null,
+          status: item.status as ReservationStatus,
+          createdAt: item.created_at,
+          cancelledAt: item.cancelled_at,
+        });
+      }
     }
 
-    const list: UserReservationItem[] = data.map((item: any) => ({
-      id: item.id,
-      classScheduleId: item.class_schedule_id,
-      classTypeId: item.class_type_id,
-      className: item.class_types?.name || "Clase",
-      classDescription: item.class_types?.description || null,
-      classColor: item.class_types?.color || "#22a058",
-      classDate: item.class_date,
-      startTime: item.class_schedules?.start_time ? String(item.class_schedules.start_time).slice(0, 5) : "—",
-      endTime: item.class_schedules?.end_time ? String(item.class_schedules.end_time).slice(0, 5) : null,
-      status: item.status as ReservationStatus,
-      createdAt: item.created_at,
-      cancelledAt: item.cancelled_at,
-    }));
+    // If upcoming, also integrate active weekly enrollments so confirmed weekly students never show 0 classes
+    if (options?.filter === "upcoming") {
+      const { data: activeEnrollments } = await supabase
+        .from("class_enrollments")
+        .select(`
+          id,
+          class_schedule_id,
+          class_type_id,
+          class_types (
+            name,
+            description,
+            color
+          ),
+          class_schedules (
+            day_of_week,
+            start_time,
+            end_time,
+            active
+          )
+        `)
+        .eq("status", "active");
+
+      if (activeEnrollments && Array.isArray(activeEnrollments)) {
+        const todayDow = getDayOfWeekFromISO(today);
+
+        for (const enr of activeEnrollments) {
+          const sched = enr.class_schedules as any;
+          if (!sched || sched.active === false) continue;
+          const targetDow = Number(sched.day_of_week);
+          const daysUntilFirst = (targetDow - todayDow + 7) % 7;
+
+          // Project next 3 weeks of confirmed recurring classes
+          for (let week = 0; week < 3; week++) {
+            const occurrenceDate = shiftDateDays(today, daysUntilFirst + week * 7);
+            const key = `${enr.class_schedule_id}_${occurrenceDate}`;
+
+            // If the user cancelled this date, skip it
+            if (cancelledMap.has(key)) continue;
+
+            // If already in list from explicit reservation row, skip it
+            const alreadyExists = list.some(
+              (r) => r.classScheduleId === enr.class_schedule_id && r.classDate === occurrenceDate,
+            );
+            if (!alreadyExists) {
+              list.push({
+                id: `auto-${enr.class_schedule_id}_${occurrenceDate}`,
+                classScheduleId: enr.class_schedule_id,
+                classTypeId: enr.class_type_id,
+                className: (enr.class_types as any)?.name || "Clase",
+                classDescription: (enr.class_types as any)?.description || null,
+                classColor: (enr.class_types as any)?.color || "#22a058",
+                classDate: occurrenceDate,
+                startTime: sched.start_time ? String(sched.start_time).slice(0, 5) : "—",
+                endTime: sched.end_time ? String(sched.end_time).slice(0, 5) : null,
+                status: "confirmed",
+                createdAt: new Date().toISOString(),
+                cancelledAt: null,
+              });
+            }
+          }
+        }
+      }
+
+      // Sort chronological
+      list.sort((a, b) => {
+        const dComp = a.classDate.localeCompare(b.classDate);
+        if (dComp !== 0) return dComp;
+        return a.startTime.localeCompare(b.startTime);
+      });
+    }
 
     return { data: list, error: null };
   } catch (err: any) {

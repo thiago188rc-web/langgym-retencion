@@ -68,18 +68,31 @@ export function ConfirmEnrollmentModal({
           </div>
         </div>
 
-        <label className="flex items-start gap-2.5 rounded-xl border border-border bg-card/60 p-3 text-xs text-muted cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            className="mt-0.5 size-4 shrink-0 accent-accent"
-          />
-          <span>
-            Entiendo que esta elección es <strong className="text-fg">definitiva</strong> y que no voy a poder
-            cambiarla por mi cuenta.
-          </span>
-        </label>
+        <div className="space-y-3">
+          <label className={cn(
+            "flex items-start gap-2.5 rounded-xl border p-3 text-xs cursor-pointer select-none transition-all",
+            acknowledged
+              ? "border-accent/40 bg-accent/10 text-fg"
+              : "border-border bg-card/60 text-muted hover:border-border-strong"
+          )}>
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-accent"
+            />
+            <span>
+              Entiendo que esta elección es <strong className="text-fg">definitiva</strong> y que no voy a poder
+              cambiarla por mi cuenta.
+            </span>
+          </label>
+
+          {!acknowledged && (
+            <p className="text-[11px] text-faint text-right">
+              * Marcá la casilla para habilitar la confirmación
+            </p>
+          )}
+        </div>
 
         <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
@@ -92,12 +105,21 @@ export function ConfirmEnrollmentModal({
           </button>
           <button
             type="button"
-            disabled={!acknowledged || submitting || schedules.length === 0}
-            onClick={onConfirm}
-            className="flex items-center gap-1.5 rounded-xl bg-accent-gradient px-4 py-1.5 text-xs font-semibold text-white shadow-xs disabled:opacity-50"
+            disabled={submitting || schedules.length === 0}
+            onClick={() => {
+              if (!acknowledged) {
+                setAcknowledged(true);
+                return;
+              }
+              onConfirm();
+            }}
+            className={cn(
+              "flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-all",
+              submitting ? "bg-accent/50 cursor-not-allowed" : "bg-accent-gradient hover:opacity-95"
+            )}
           >
             <Lock size={12} />
-            {submitting ? "Confirmando…" : "Confirmar por única vez"}
+            {submitting ? "Confirmando…" : !acknowledged ? "Confirmar horarios" : "Confirmar por única vez"}
           </button>
         </div>
       </div>

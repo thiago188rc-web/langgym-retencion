@@ -509,7 +509,7 @@ export async function ensureYogaDeportivoScheduleExists(): Promise<{
       }
     }
 
-    // 3. If a generic 'Yoga' schedule at Friday 19:00 exists, deactivate it
+    // 3. If a generic 'Yoga' schedule at Friday 19:00 exists, preserve enrolled students and deactivate
     const plainYoga = (existingTypes || []).find(
       (t) => t.name.trim().toLowerCase() === "yoga" && t.id !== yogaTypeId
     );
@@ -518,6 +518,28 @@ export async function ensureYogaDeportivoScheduleExists(): Promise<{
         (s) => s.class_type_id === plainYoga.id && (s.start_time || "").startsWith("19:00")
       );
       if (plainYogaSched) {
+        // Encontrar el ID del horario de Yoga Deportivo viernes 19:00
+        const { data: ydSched } = await supabase
+          .from("class_schedules")
+          .select("id")
+          .eq("class_type_id", yogaTypeId)
+          .eq("day_of_week", 5)
+          .like("start_time", "19:00%")
+          .maybeSingle();
+
+        if (ydSched) {
+          // Migrar cualquier inscripción o reserva activa al nuevo horario de Yoga Deportivo
+          await supabase
+            .from("class_enrollments")
+            .update({ class_schedule_id: ydSched.id, class_type_id: yogaTypeId })
+            .eq("class_schedule_id", plainYogaSched.id);
+
+          await supabase
+            .from("reservations")
+            .update({ class_schedule_id: ydSched.id, class_type_id: yogaTypeId })
+            .eq("class_schedule_id", plainYogaSched.id);
+        }
+
         await supabase
           .from("class_schedules")
           .update({ active: false })
@@ -644,17 +666,22 @@ export async function createClassType(params: {
 }
 
 /**
- * 12. Delete a class schedule
+ * 12. Delete / Deactivate a class schedule safely without cascading deletes
  */
 export async function deleteClassSchedule(
   scheduleId: string,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const supabase = createClient();
-    const { error } = await supabase.from("class_schedules").delete().eq("id", scheduleId);
+    // Desactivar lógicamente para preservar historial e inscriptos (evita borrado CASCADE)
+    const { error } = await supabase
+      .from("class_schedules")
+      .update({ active: false, updated_at: new Date().toISOString() })
+      .eq("id", scheduleId);
+
     if (error) {
-      console.error("Error deleting class schedule:", error);
-      return { success: false, error: error.message || "No se pudo eliminar el horario." };
+      console.error("Error deactivating class schedule:", error);
+      return { success: false, error: error.message || "No se pudo desactivar el horario." };
     }
     return { success: true, error: null };
   } catch (err: any) {

@@ -20,13 +20,25 @@ export function UpcomingReservations({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-faint">
-          Mis próximas clases
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-faint">
+            Mis próximas clases
+          </h2>
+          {reservations.length > 0 && (
+            <span className="text-xs text-muted">
+              ({reservations.length})
+            </span>
+          )}
+        </div>
         {reservations.length > 0 && (
-          <span className="text-xs text-muted">
-            {reservations.length} {reservations.length === 1 ? "reserva" : "reservas"}
-          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onExploreClick}
+            className="text-xs h-7 px-2.5"
+          >
+            + Reservar clase
+          </Button>
         )}
       </div>
 

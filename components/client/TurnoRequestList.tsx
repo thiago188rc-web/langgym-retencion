@@ -18,7 +18,7 @@ export function TurnoRequestList({
   schedules: AvailableSchedule[];
   loading: boolean;
   submitting: boolean;
-  onConfirm: (scheduleIds: string[]) => Promise<void>;
+  onConfirm: (scheduleIds: string[]) => Promise<boolean | void>;
 }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -48,9 +48,11 @@ export function TurnoRequestList({
   };
 
   const handleFinalConfirm = async () => {
-    await onConfirm(selectedIds);
+    const result = await onConfirm(selectedIds);
     setConfirmModalOpen(false);
-    setSelectedIds([]);
+    if (result !== false) {
+      setSelectedIds([]);
+    }
   };
 
   return (
