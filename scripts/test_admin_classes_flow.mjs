@@ -20,6 +20,7 @@ const mockDb = {
   classTypes: [
     { id: "type-func", name: "Entrenamiento Funcional", default_capacity: 30, active: true },
     { id: "type-yoga", name: "Yoga", default_capacity: null, active: true },
+    { id: "type-yoga-dep", name: "Yoga Deportivo", default_capacity: null, active: true },
     { id: "type-flexi", name: "Flexi-Run", default_capacity: null, active: true },
     { id: "type-stretch", name: "Stretching", default_capacity: 15, active: true },
   ],
@@ -33,7 +34,7 @@ const mockDb = {
     // Martes (2)
     { id: "sch-stretch-tue-09", class_type_id: "type-stretch", day_of_week: 2, start_time: "09:00", capacity: 15, active: true },
     // Viernes (5)
-    { id: "sch-yoga-fri-19", class_type_id: "type-yoga", day_of_week: 5, start_time: "19:00", capacity: null, active: true },
+    { id: "sch-yoga-dep-fri-19", class_type_id: "type-yoga-dep", day_of_week: 5, start_time: "19:00", capacity: null, active: true },
   ],
   reservations: [],
   students: [
@@ -141,6 +142,10 @@ assert(mondayClasses.length === 5, "Lunes carga 5 horarios (3 Funcional, 1 Yoga,
 // TEST 2: Tuesday classes loaded correctly
 const tuesdayClasses = simulateGetAdminClasses(2, "2026-08-18");
 assert(tuesdayClasses.some((c) => c.className === "Stretching" && c.capacity === 15), "Martes incluye Stretching con cupo de 15");
+
+// TEST 2b: Friday classes include Yoga Deportivo at 19:00 hs
+const fridayClasses = simulateGetAdminClasses(5, "2026-08-21");
+assert(fridayClasses.some((c) => c.className === "Yoga Deportivo" && c.startTime === "19:00"), "Viernes incluye Yoga Deportivo a las 19:00 hs");
 
 // TEST 3: Yoga and Flexi-Run pending capacity detection
 const yogaMon = mondayClasses.find((c) => c.className === "Yoga");

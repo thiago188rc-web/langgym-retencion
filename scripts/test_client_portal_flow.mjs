@@ -31,7 +31,7 @@ class MockClassEngine {
       { id: "sched-func-18", name: "Entrenamiento Funcional", dayOfWeek: 1, startTime: "18:00", capacity: 30 },
       { id: "sched-stretching-19", name: "Stretching", dayOfWeek: 2, startTime: "19:00", capacity: 15 },
       { id: "sched-yoga-08", name: "Yoga", dayOfWeek: 1, startTime: "08:00", capacity: null }, // Pending
-      { id: "sched-yoga-fri-19", name: "Yoga", dayOfWeek: 5, startTime: "19:00", capacity: null }, // Pending
+      { id: "sched-yoga-dep-fri-19", name: "Yoga Deportivo", dayOfWeek: 5, startTime: "19:00", capacity: null }, // Pending
     ];
     this.reservations = [];
   }
@@ -144,6 +144,10 @@ assert(yoga.isPendingCapacity === true, "Yoga detecta cupo pendiente (NULL)");
 // 2. Attempt to book Yoga (pending capacity)
 const bookYogaRes = engine.bookClass(yoga.scheduleId, "2026-08-17", alumno1);
 assert(bookYogaRes.success === false && bookYogaRes.error.includes("aún no tiene cupo definido"), "No permite reservar clase con cupo pendiente");
+
+// 2b. Check Friday 2026-08-21 has Yoga Deportivo 19:00 hs
+const fridayClasses = engine.getAvailableClasses("2026-08-21", alumno1.userId);
+assert(fridayClasses.some((c) => c.name === "Yoga Deportivo" && c.startTime === "19:00"), "Viernes 2026-08-21 incluye Yoga Deportivo a las 19:00 hs");
 
 // 3. Alumno 1 books Funcional
 const bookFuncRes1 = engine.bookClass(funcional.scheduleId, "2026-08-17", alumno1);

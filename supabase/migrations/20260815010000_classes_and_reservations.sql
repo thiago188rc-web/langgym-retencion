@@ -442,6 +442,7 @@ DECLARE
     v_yoga_id UUID;
     v_flexi_id UUID;
     v_stretching_id UUID;
+    v_yoga_dep_id UUID;
 BEGIN
     FOR r_org IN SELECT id FROM public.organizations LOOP
         -- 1. ENTRENAMIENTO FUNCIONAL (Cupo: 30)
@@ -487,12 +488,10 @@ BEGIN
         -- Horarios Yoga:
         -- Lunes (1): 08:00
         -- Miércoles (3): 08:00
-        -- Viernes (5): 19:00
         INSERT INTO public.class_schedules (organization_id, class_type_id, day_of_week, start_time, capacity)
         VALUES 
             (r_org.id, v_yoga_id, 1, '08:00', NULL),
-            (r_org.id, v_yoga_id, 3, '08:00', NULL),
-            (r_org.id, v_yoga_id, 5, '19:00', NULL)
+            (r_org.id, v_yoga_id, 3, '08:00', NULL)
         ON CONFLICT (organization_id, class_type_id, day_of_week, start_time) DO NOTHING;
 
         -- 3. FLEXI-RUN (Cupo: NULL - Pendiente de confirmar por Admin)
@@ -544,6 +543,25 @@ BEGIN
             (r_org.id, v_stretching_id, 4, '19:00', 15)
         ON CONFLICT (organization_id, class_type_id, day_of_week, start_time) 
         DO UPDATE SET capacity = 15;
+
+        -- 5. YOGA DEPORTIVO (Cupo: NULL - Pendiente de confirmar por Admin)
+        INSERT INTO public.class_types (organization_id, name, description, color, default_capacity, active)
+        VALUES (r_org.id, 'Yoga Deportivo', 'Conexión cuerpo, mente y entrenamiento físico.', '#a855f7', NULL, true)
+        ON CONFLICT (organization_id, name) DO NOTHING
+        RETURNING id INTO v_yoga_dep_id;
+
+        IF v_yoga_dep_id IS NULL THEN
+            SELECT id INTO v_yoga_dep_id FROM public.class_types WHERE organization_id = r_org.id AND name = 'Yoga Deportivo';
+        END IF;
+
+        -- Horario Yoga Deportivo:
+        -- Viernes (5): 19:00
+        IF v_yoga_dep_id IS NOT NULL THEN
+            INSERT INTO public.class_schedules (organization_id, class_type_id, day_of_week, start_time, capacity)
+            VALUES 
+                (r_org.id, v_yoga_dep_id, 5, '19:00', NULL)
+            ON CONFLICT (organization_id, class_type_id, day_of_week, start_time) DO NOTHING;
+        END IF;
 
     END LOOP;
 END;
