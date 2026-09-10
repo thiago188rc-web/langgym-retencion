@@ -417,3 +417,249 @@ export async function getAllClassTypesAndSchedules(): Promise<{
     return { data: [], error: "Error inesperado al cargar la configuración de clases." };
   }
 }
+
+/**
+ * 9. Auto-sync / self-healing: Ensure Yoga Deportivo and Friday 19:00 schedule exist in Supabase
+ */
+export async function ensureYogaDeportivoScheduleExists(): Promise<{
+  created: boolean;
+  error: string | null;
+}> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { created: false, error: null };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) return { created: false, error: null };
+    const orgId = profile.organization_id;
+
+    // 1. Check or insert class_type 'Yoga Deportivo'
+    const { data: existingTypes } = await supabase
+      .from("class_types")
+      .select("id, name, active")
+      .eq("organization_id", orgId);
+
+    let yogaTypeId: string | null = null;
+    const foundYogaDep = (existingTypes || []).find(
+      (t) => t.name.trim().toLowerCase() === "yoga deportivo"
+    );
+
+    if (foundYogaDep) {
+      yogaTypeId = foundYogaDep.id;
+      if (!foundYogaDep.active) {
+        await supabase
+          .from("class_types")
+          .update({ active: true })
+          .eq("id", yogaTypeId);
+      }
+    } else {
+      const { data: newType, error: insTypeError } = await supabase
+        .from("class_types")
+        .insert({
+          organization_id: orgId,
+          name: "Yoga Deportivo",
+          description: "Conexión cuerpo, mente y entrenamiento físico.",
+          color: "#a855f7",
+          default_capacity: 15,
+          active: true,
+        })
+        .select("id")
+        .single();
+
+      if (!insTypeError && newType) {
+        yogaTypeId = newType.id;
+      }
+    }
+
+    if (!yogaTypeId) {
+      return { created: false, error: "No se pudo asegurar la actividad Yoga Deportivo." };
+    }
+
+    // 2. Check or insert class_schedules for Friday (5) at 19:00
+    const { data: existingSchedules } = await supabase
+      .from("class_schedules")
+      .select("id, start_time, active, class_type_id")
+      .eq("organization_id", orgId)
+      .eq("day_of_week", 5);
+
+    const hasYogaFriday19 = (existingSchedules || []).some(
+      (s) => s.class_type_id === yogaTypeId && (s.start_time || "").startsWith("19:00")
+    );
+
+    let createdSchedule = false;
+    if (!hasYogaFriday19) {
+      const { error: insSchedError } = await supabase.from("class_schedules").insert({
+        organization_id: orgId,
+        class_type_id: yogaTypeId,
+        day_of_week: 5,
+        start_time: "19:00:00",
+        capacity: 15,
+        active: true,
+      });
+      if (!insSchedError) {
+        createdSchedule = true;
+      }
+    }
+
+    // 3. If a generic 'Yoga' schedule at Friday 19:00 exists, deactivate it
+    const plainYoga = (existingTypes || []).find(
+      (t) => t.name.trim().toLowerCase() === "yoga" && t.id !== yogaTypeId
+    );
+    if (plainYoga) {
+      const plainYogaSched = (existingSchedules || []).find(
+        (s) => s.class_type_id === plainYoga.id && (s.start_time || "").startsWith("19:00")
+      );
+      if (plainYogaSched) {
+        await supabase
+          .from("class_schedules")
+          .update({ active: false })
+          .eq("id", plainYogaSched.id);
+      }
+    }
+
+    return { created: createdSchedule || !foundYogaDep, error: null };
+  } catch (err: any) {
+    console.error("Error in ensureYogaDeportivoScheduleExists:", err);
+    return { created: false, error: err.message || "Error al verificar horarios" };
+  }
+}
+
+/**
+ * 10. Create a new class schedule
+ */
+export async function createClassSchedule(params: {
+  classTypeId: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime?: string | null;
+  capacity?: number | null;
+}): Promise<{ success: boolean; data?: any; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "No autenticado" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return { success: false, error: "No se encontró la organización." };
+    }
+
+    const formattedStart = params.startTime.length === 5 ? `${params.startTime}:00` : params.startTime;
+    const formattedEnd = params.endTime
+      ? params.endTime.length === 5
+        ? `${params.endTime}:00`
+        : params.endTime
+      : null;
+
+    const { data, error } = await supabase
+      .from("class_schedules")
+      .insert({
+        organization_id: profile.organization_id,
+        class_type_id: params.classTypeId,
+        day_of_week: params.dayOfWeek,
+        start_time: formattedStart,
+        end_time: formattedEnd,
+        capacity: params.capacity ?? 15,
+        active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating class schedule:", error);
+      return { success: false, error: error.message || "No se pudo crear el horario." };
+    }
+
+    return { success: true, data, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in createClassSchedule:", err);
+    return { success: false, error: "Error inesperado al crear el horario." };
+  }
+}
+
+/**
+ * 11. Create a new class type
+ */
+export async function createClassType(params: {
+  name: string;
+  description?: string;
+  color?: string;
+  defaultCapacity?: number | null;
+}): Promise<{ success: boolean; data?: any; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "No autenticado" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return { success: false, error: "No se encontró la organización." };
+    }
+
+    const { data, error } = await supabase
+      .from("class_types")
+      .insert({
+        organization_id: profile.organization_id,
+        name: params.name.trim(),
+        description: params.description?.trim() || null,
+        color: params.color || "#a855f7",
+        default_capacity: params.defaultCapacity ?? 15,
+        active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating class type:", error);
+      return { success: false, error: error.message || "No se pudo crear la actividad." };
+    }
+
+    return { success: true, data, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in createClassType:", err);
+    return { success: false, error: "Error inesperado al crear la actividad." };
+  }
+}
+
+/**
+ * 12. Delete a class schedule
+ */
+export async function deleteClassSchedule(
+  scheduleId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const { error } = await supabase.from("class_schedules").delete().eq("id", scheduleId);
+    if (error) {
+      console.error("Error deleting class schedule:", error);
+      return { success: false, error: error.message || "No se pudo eliminar el horario." };
+    }
+    return { success: true, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in deleteClassSchedule:", err);
+    return { success: false, error: "Error inesperado al eliminar el horario." };
+  }
+}
+
