@@ -123,13 +123,19 @@ export default function RegisterPage() {
                 <span>{errorMsg}</span>
               </div>
               {isAlreadyRegistered && (
-                <div className="pt-1 pl-6">
-                  <Link
-                    href={`/login?email=${encodeURIComponent(email)}`}
-                    className="inline-flex items-center font-semibold underline hover:opacity-90"
-                  >
-                    Ir a Iniciar Sesión →
-                  </Link>
+                <div className="pt-2 pl-6 space-y-1.5 border-t border-danger/20 text-xs">
+                  <p className="text-fg/90 font-medium">
+                    ¿Ya tenés cuenta con este correo?{" "}
+                    <Link
+                      href={`/login?email=${encodeURIComponent(email)}`}
+                      className="font-semibold text-accent underline hover:opacity-90 ml-1"
+                    >
+                      Iniciá sesión aquí →
+                    </Link>
+                  </p>
+                  <p className="text-muted leading-relaxed">
+                    💡 <strong>Para padres y familias:</strong> Si estás anotando a tu hijo/a o a otro familiar, por favor ingresá un correo individual para él o ella. Cada alumno debe tener su propia cuenta para poder asignarle su ficha, pase y turnos correspondientes.
+                  </p>
                 </div>
               )}
             </div>
@@ -172,7 +178,10 @@ export default function RegisterPage() {
               </Field>
             </div>
 
-            <Field label="Correo electrónico">
+            <Field
+              label="Correo electrónico"
+              hint="Cada alumno/a necesita un correo individual para gestionar sus turnos."
+            >
               <div className="relative">
                 <Input
                   type="email"

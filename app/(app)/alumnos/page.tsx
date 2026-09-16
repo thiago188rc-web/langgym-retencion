@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { relativeDays } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { CuotaEstado } from "@/lib/types";
+import { ClientAccountsManager } from "@/components/admin/students/ClientAccountsManager";
 
 type EstadoFilter = "all" | CuotaEstado;
 
@@ -29,6 +30,7 @@ const FILTERS: { key: EstadoFilter; label: string }[] = [
 const PAGE_SIZES = [25, 50, 100];
 
 export default function AlumnosPage() {
+  const [activeTab, setActiveTab] = useState<"siga" | "cuentas">("siga");
   const students = useStore((s) => s.students);
   const config = useStore((s) => s.config);
   const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
@@ -63,10 +65,49 @@ export default function AlumnosPage() {
   const paginatedRows = filteredRows.slice(startIndex, startIndex + pageSize);
 
   if (!hasSyncedOnce && isLoadingFromSupabase) return <PanelLoading />;
-  if (students.length === 0) return <NoData />;
 
   return (
     <div className="space-y-5">
+      {/* Top Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-border pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("siga")}
+          className={cn(
+            "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all",
+            activeTab === "siga"
+              ? "bg-accent/15 text-accent border border-accent/30 shadow-sm"
+              : "text-muted hover:text-fg hover:bg-surface/60",
+          )}
+        >
+          <Users size={15} />
+          Base de Socios (SIGA)
+          <span className="ml-1 rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-faint">
+            {students.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("cuentas")}
+          className={cn(
+            "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all",
+            activeTab === "cuentas"
+              ? "bg-accent/15 text-accent border border-accent/30 shadow-sm"
+              : "text-muted hover:text-fg hover:bg-surface/60",
+          )}
+        >
+          <Users size={15} />
+          Cuentas Web de Alumnos
+        </button>
+      </div>
+
+      {activeTab === "cuentas" ? (
+        <ClientAccountsManager />
+      ) : students.length === 0 ? (
+        <NoData />
+      ) : (
+        <>
       {/* Top Filter and Search Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-xs">
@@ -205,6 +246,8 @@ export default function AlumnosPage() {
           </div>
         </>
       )}
-    </div>
+    </>
+  )}
+</div>
   );
 }

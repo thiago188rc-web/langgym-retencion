@@ -123,40 +123,15 @@ export async function POST(request: Request) {
         errMsg.includes("registered");
 
       if (isAlreadyRegistered) {
-        // Try to find the existing auth user to ensure their profile is properly linked
-        try {
-          const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
-          const existingUser = usersData?.users?.find(
-            (u) => u.email?.toLowerCase() === cleanEmail,
-          );
-
-          if (existingUser) {
-            userId = existingUser.id;
-            isExistingAuthUser = true;
-            // Update password & user_metadata in case they are completing registration
-            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: password,
-              user_metadata: {
-                full_name: fullName,
-                phone: cleanPhone,
-                registered_as: "cliente",
-              },
-            });
-          }
-        } catch (listErr) {
-          console.warn("Could not list users during recovery:", listErr);
-        }
-
-        if (!userId) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: "Ya existe una cuenta con este correo electrónico. Por favor iniciá sesión.",
-              code: "ALREADY_REGISTERED",
-            },
-            { status: 409 },
-          );
-        }
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Ya existe una cuenta registrada con este correo electrónico. Cada alumno (incluso hijos o familiares) debe tener su propio correo único para reservar clases individuales. Si ya tenés cuenta, iniciá sesión.",
+            code: "ALREADY_REGISTERED",
+          },
+          { status: 409 },
+        );
       } else {
         console.error("Error creating auth user:", authError);
         return NextResponse.json(

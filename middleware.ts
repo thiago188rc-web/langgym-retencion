@@ -56,7 +56,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/auth/callback") ||
-    pathname.startsWith("/api/auth");
+    pathname.startsWith("/api");
 
   const isIncompleteProfileRoute = pathname.startsWith(INCOMPLETE_PROFILE_ROUTE);
 

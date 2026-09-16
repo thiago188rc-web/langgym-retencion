@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Clock, Lock } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { dayName, type AvailableSchedule } from "@/lib/services/enrollmentService";
+import { cn } from "@/lib/utils";
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
