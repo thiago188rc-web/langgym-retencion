@@ -201,13 +201,29 @@ export async function POST(request: NextRequest) {
 
       console.log(`[Admin] Deleting user account: ${userId}`);
 
-      // 1. Delete associated enrollment requests
+      // 0. Safeguard: Prevent deleting the owner or main administrator
+      const { data: targetProfile } = (await (supabaseAdmin.from("profiles") as any)
+        .select("role, email")
+        .eq("id", userId)
+        .single()) as { data: { role: string; email: string } | null };
+
+      if (targetProfile?.role === "owner" || targetProfile?.email?.includes("andres@")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "No se puede eliminar la cuenta principal de administración o del dueño.",
+          },
+          { status: 403 },
+        );
+      }
+
+      // 1. Delete associated class enrollments
       try {
-        await (supabaseAdmin.from("class_enrollment_requests") as any)
+        await (supabaseAdmin.from("class_enrollments") as any)
           .delete()
           .eq("user_id", userId);
       } catch (err) {
-        console.warn("Could not delete enrollment requests:", err);
+        console.warn("Could not delete class enrollments:", err);
       }
 
       // 2. Delete reservations
