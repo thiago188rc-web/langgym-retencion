@@ -20,7 +20,10 @@ export function parseDate(value: unknown): string | null {
   if (value == null) return null;
   if (value instanceof Date) {
     if (isNaN(value.getTime())) return null;
-    return toLocalISO(value);
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(value.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
   if (typeof value === "number") return excelSerialToISO(value);
 

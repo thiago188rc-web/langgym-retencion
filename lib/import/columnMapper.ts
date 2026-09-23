@@ -1,11 +1,13 @@
 import type { CanonicalField, ColumnMapping } from "../types";
 
-/** Normalize a header: lowercase, strip accents, keep only a-z0-9. */
+/** Normalize a header: lowercase, strip accents, convert '#' / 'n°' to 'nro', keep only a-z0-9. */
 function normalizeHeader(h: string): string {
   return String(h)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/^#+$/, "nro")
+    .replace(/[º°]/g, "o")
     .replace(/[^a-z0-9]/g, "");
 }
 
@@ -14,8 +16,17 @@ function normalizeHeader(h: string): string {
  * matching is exact-on-normalized then includes-based as a fallback.
  */
 const SYNONYMS: Record<CanonicalField, string[]> = {
-  idSocio: ["idsocio", "id", "socio", "nrosocio", "nrodesocio", "legajo", "codigo", "idcliente"],
-  nombre: ["nombre", "apellidoynombre", "nombreyapellido", "nombrecompleto", "apellidonombre", "apellido", "nombres", "cliente", "alumno"],
+  idSocio: [
+    "idsocio", "id", "socio", "nrosocio", "nrodesocio", "legajo", "codigo", "idcliente",
+    "dni", "documento", "doc", "nrodoc", "cedula", "cuil", "cuit", "nro", "no", "num", "numero"
+  ],
+  nombre: [
+    "nombre", "apellidoynombre", "nombreyapellido", "nombrecompleto", "apellidonombre",
+    "nombres", "cliente", "alumno", "socioynombre"
+  ],
+  apellido: [
+    "apellido", "apellidos", "primerapellido", "segundoapellido"
+  ],
   habilitado: ["shabilitado", "habilitado", "habilit", "activo", "estado", "habilitacion"],
   idMembresia: ["idmembresia", "idmemb", "idplan"],
   membresia: ["descripcion", "membresia", "plan", "tipomembresia", "tipo", "cuota"],
@@ -28,12 +39,12 @@ const SYNONYMS: Record<CanonicalField, string[]> = {
   observacion: ["obs", "observacion", "observaciones", "nota", "notas", "comentario", "comentarios"],
 };
 
-/** Fields the importer cannot function without. */
-const REQUIRED: CanonicalField[] = ["idSocio", "nombre"];
+/** Fields the importer cannot function without. Note: nombre OR apellido satisfies name presence */
+const REQUIRED: CanonicalField[] = ["nombre"];
 
 /**
  * Build a mapping from raw header strings to canonical fields.
- * Tolerates reordered / renamed columns across SIGA exports.
+ * Tolerates reordered / renamed columns across SIGA exports and contact sheets.
  */
 export function buildColumnMapping(headers: string[]): ColumnMapping {
   const byHeader: Record<string, CanonicalField | null> = {};
@@ -83,9 +94,10 @@ export function buildColumnMapping(headers: string[]): ColumnMapping {
     }
   }
 
-  const missingRequired = REQUIRED.filter((f) => !byField[f]);
+  const missingRequired: CanonicalField[] = [];
+  if (!byField.nombre && !byField.apellido) missingRequired.push("nombre");
 
   return { byHeader, byField, unmapped, missingRequired };
 }
 
-export { normalizeHeader, SYNONYMS, REQUIRED };
+export { normalizeHeader, SYNONYMS, REQUIRED };

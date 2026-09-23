@@ -74,8 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (org) {
         setOrganization(org);
 
-        // Only sync admin data store if user is staff/admin/owner (clients don't download students database)
-        if (prof.role !== "cliente") {
+        // Only sync admin data store if user is owner/admin/staff (profesores and clients don't download students database)
+        if (prof.role === "owner" || prof.role === "admin" || prof.role === "staff") {
           // Check if there is pending localStorage data to migrate to Supabase
           if (typeof window !== "undefined") {
             const migrationKey = `langgym_migrated_${org.id}`;

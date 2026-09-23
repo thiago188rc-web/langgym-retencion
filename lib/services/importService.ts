@@ -96,6 +96,22 @@ export async function syncExcelImportToSupabase(
   }
 
   const existingBySocio = new Map(existingRows.map((r) => [r.id_socio, r]));
+  const existingByPhone = new Map<string, (typeof existingRows)[0]>();
+  const existingByName = new Map<string, (typeof existingRows)[0]>();
+
+  for (const r of existingRows) {
+    if (r.telefono) {
+      const d = r.telefono.replace(/\D/g, "");
+      if (d.length >= 7) existingByPhone.set(d, r);
+    }
+    if (r.telefono_raw) {
+      const d = r.telefono_raw.replace(/\D/g, "");
+      if (d.length >= 7) existingByPhone.set(d, r);
+    }
+    const nameKey = `${r.nombre || ""} ${r.apellido || ""}`.trim().toLowerCase();
+    if (nameKey) existingByName.set(nameKey, r);
+  }
+
   const importedSocioSet = new Set<string>();
 
   let nuevosCount = 0;
@@ -158,23 +174,39 @@ export async function syncExcelImportToSupabase(
   const todayIso = new Date().toISOString();
 
   for (const item of importedList) {
-    if (!item.idSocio || !item.nombre) {
+    if (!item.nombre && !item.nombreCompleto) {
       erroresCount++;
       continue;
     }
 
-    importedSocioSet.add(item.idSocio);
-    const existing = existingBySocio.get(item.idSocio);
+    const cleanDigits = (item.telefono || item.telefonoRaw || "").replace(/\D/g, "");
+    let existing = item.idSocio ? existingBySocio.get(item.idSocio) : undefined;
+    if (!existing && cleanDigits.length >= 7) {
+      existing = existingByPhone.get(cleanDigits);
+    }
+    if (!existing && item.nombreCompleto) {
+      existing = existingByName.get(item.nombreCompleto.trim().toLowerCase());
+    }
 
     if (!existing) {
       // Nuevo alumno
       nuevosCount++;
+      let finalSocioId =
+        item.idSocio ||
+        (cleanDigits.length >= 7
+          ? `TEL-${cleanDigits}`
+          : `AUT-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+      if (existingBySocio.has(finalSocioId)) {
+        finalSocioId = `${finalSocioId}-${Math.floor(Math.random() * 1000)}`;
+      }
+      importedSocioSet.add(finalSocioId);
+
       toInsert.push({
         organization_id: organizationId,
-        id_socio: item.idSocio,
+        id_socio: finalSocioId,
         nombre: item.nombre,
         apellido: item.apellido || "",
-        nombre_completo: item.nombreCompleto,
+        nombre_completo: item.nombreCompleto || `${item.nombre} ${item.apellido || ""}`.trim(),
         telefono: item.telefono,
         telefono_raw: item.telefonoRaw,
         email: item.email,
@@ -188,6 +220,7 @@ export async function syncExcelImportToSupabase(
       });
     } else {
       // Alumno que ya existía (Permanencia / Actualización).
+      importedSocioSet.add(existing.id_socio);
       // For any optional field this import doesn't have a recognized column
       // for, keep the alumno's existing value instead of overwriting it with
       // null — the absence of a column means "no info", not "clear this".

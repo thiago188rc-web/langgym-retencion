@@ -3,16 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/supabase/types";
 
-const ADMIN_MAINTENANCE_KEY = process.env.ADMIN_MAINTENANCE_KEY || "langgym_maint_2026_andres";
+const ADMIN_MAINTENANCE_KEY = process.env.ADMIN_MAINTENANCE_KEY;
 
 async function isAuthorizedAdmin(request: NextRequest): Promise<boolean> {
-  // 1. Secret header for direct maintenance / scripts
+  // 1. Secret header for direct maintenance / scripts (ONLY if explicitly set in env)
   const headerKey = request.headers.get("x-admin-key");
-  if (headerKey && headerKey === ADMIN_MAINTENANCE_KEY) {
+  if (ADMIN_MAINTENANCE_KEY && headerKey && headerKey === ADMIN_MAINTENANCE_KEY) {
     return true;
   }
 
-  // 2. Cookie session check for logged in admin or profesor
+  // 2. Cookie session check strictly for logged in owner or admin
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) return false;
@@ -38,7 +38,8 @@ async function isAuthorizedAdmin(request: NextRequest): Promise<boolean> {
       .eq("id", user.id)
       .single();
 
-    return profile?.role === "admin" || profile?.role === "profesor";
+    // STRICT: Only owner and admin are authorized. Profesor and client are strictly blocked.
+    return profile?.role === "owner" || profile?.role === "admin";
   } catch {
     return false;
   }
@@ -175,20 +176,6 @@ export async function POST(request: NextRequest) {
     const { action } = body;
     const supabaseAdmin = getAdminClient();
 
-    // ACTION: get_env_sync
-    if (action === "get_env_sync") {
-      const headerKey = request.headers.get("x-admin-key");
-      if (headerKey !== ADMIN_MAINTENANCE_KEY) {
-        return NextResponse.json({ success: false, error: "Clave de mantenimiento requerida." }, { status: 403 });
-      }
-      return NextResponse.json({
-        success: true,
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      });
-    }
-
     // ACTION: delete_user
     if (action === "delete_user") {
       const { userId } = body;
@@ -201,17 +188,17 @@ export async function POST(request: NextRequest) {
 
       console.log(`[Admin] Deleting user account: ${userId}`);
 
-      // 0. Safeguard: Prevent deleting the owner or main administrator
+      // 0. Safeguard: Prevent deleting the owner or administrators
       const { data: targetProfile } = (await (supabaseAdmin.from("profiles") as any)
         .select("role, email")
         .eq("id", userId)
         .single()) as { data: { role: string; email: string } | null };
 
-      if (targetProfile?.role === "owner" || targetProfile?.email?.includes("andres@")) {
+      if (targetProfile?.role === "owner" || targetProfile?.role === "admin" || targetProfile?.email?.includes("andres@")) {
         return NextResponse.json(
           {
             success: false,
-            error: "No se puede eliminar la cuenta principal de administración o del dueño.",
+            error: "No se puede eliminar la cuenta de un administrador o del dueño.",
           },
           { status: 403 },
         );

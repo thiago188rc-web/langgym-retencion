@@ -49,6 +49,7 @@ interface Outcome {
 const FIELD_LABELS: Record<CanonicalField, string> = {
   idSocio: "ID Socio",
   nombre: "Nombre",
+  apellido: "Apellido",
   habilitado: "Habilitado",
   idMembresia: "ID Membresía",
   membresia: "Membresía",
@@ -156,14 +157,14 @@ export function ImportFlow() {
           sinCambios = syncRes.sinCambios;
           bajas = syncRes.bajas;
           setSyncedData(syncRes.syncedStudents, syncRes.importRecord);
-        } catch {
-          // Fallback safely to optimistic local state without leaking error internals
-          const summary = applyImport(result.parsedStudents, file.name, result.errores.length);
-          nuevos = summary.nuevos;
-          actualizados = summary.actualizados;
-          sinCambios = summary.sinCambios;
-          bajas = summary.bajasDetectadas;
-          recuperados = summary.recuperadosDetectados;
+        } catch (syncErr: any) {
+          console.error("Error sincronizando importación con Supabase:", syncErr);
+          push(
+            syncErr?.message || "Ocurrió un error al guardar los alumnos en el servidor. Por favor reintentá.",
+            "danger",
+          );
+          setPhase("idle");
+          return;
         }
       } else {
         const summary = applyImport(result.parsedStudents, file.name, result.errores.length);
@@ -359,11 +360,18 @@ function ImportSummary({ outcome, onRestart }: { outcome: Outcome; onRestart: ()
             </p>
           </div>
           {!failed && (
-            <Link href="/">
-              <Button variant="primary">
-                Ver panel <ArrowRight size={16} />
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/alumnos">
+                <Button variant="secondary">
+                  <Users size={15} /> Ver socios
+                </Button>
+              </Link>
+              <Link href="/">
+                <Button variant="primary">
+                  Ver panel <ArrowRight size={16} />
+                </Button>
+              </Link>
+            </div>
           )}
         </div>
 

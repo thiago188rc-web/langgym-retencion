@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Sliders, Calendar, Clock, AlertTriangle, Check, Power, ShieldAlert, X, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Sliders, Calendar, Clock, AlertTriangle, Check, Power, ShieldAlert, X, Plus, Trash2, UserCheck, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
 import {
   type FullClassTypeItem,
   type FullScheduleItem,
+  type ProfessorOption,
   updateScheduleCapacity,
   toggleScheduleActive,
   createClassSchedule,
   createClassType,
   deleteClassSchedule,
+  adminAssignProfessorToSchedule,
+  getOrgProfessors,
 } from "@/lib/services/adminClassService";
 
 interface ScheduleManagementModalProps {
@@ -37,11 +40,47 @@ export function ScheduleManagementModal({
   const [actionLoading, setActionLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Professors state
+  const [professors, setProfessors] = useState<ProfessorOption[]>([]);
+  const [loadingProfessors, setLoadingProfessors] = useState(false);
+  const [assigningScheduleId, setAssigningScheduleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setLoadingProfessors(true);
+      getOrgProfessors()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error loading professors:", error);
+          } else {
+            setProfessors(data || []);
+          }
+        })
+        .finally(() => setLoadingProfessors(false));
+    }
+  }, [open]);
+
+  const handleAssignProfessor = async (scheduleId: string, professorId: string | null) => {
+    setAssigningScheduleId(scheduleId);
+    setFormError(null);
+    try {
+      const res = await adminAssignProfessorToSchedule(scheduleId, professorId);
+      if (res.error) {
+        setFormError(res.error);
+      } else {
+        await onRefresh();
+      }
+    } finally {
+      setAssigningScheduleId(null);
+    }
+  };
+
   // Form states
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [newDay, setNewDay] = useState<number>(5); // Default Friday
   const [newTime, setNewTime] = useState<string>("19:00");
   const [newCapacity, setNewCapacity] = useState<string>("15");
+  const [newProfessorId, setNewProfessorId] = useState<string>("");
 
   const [showAddType, setShowAddType] = useState(false);
   const [newTypeName, setNewTypeName] = useState<string>("");
@@ -94,7 +133,11 @@ export function ScheduleManagementModal({
       if (res.error) {
         setFormError(res.error);
       } else {
+        if (res.data?.id && newProfessorId) {
+          await adminAssignProfessorToSchedule(res.data.id, newProfessorId);
+        }
         setShowAddSchedule(false);
+        setNewProfessorId("");
         await onRefresh();
       }
     } finally {
@@ -365,6 +408,22 @@ export function ScheduleManagementModal({
                       className="w-full rounded-xl border border-border bg-bg px-2.5 py-2 text-xs text-fg focus:border-accent focus:outline-none"
                     />
                   </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="text-[11px] font-medium text-muted block mb-1">Profesor Asignado</label>
+                    <select
+                      value={newProfessorId}
+                      onChange={(e) => setNewProfessorId(e.target.value)}
+                      className="w-full rounded-xl border border-border bg-bg px-2.5 py-2 text-xs text-fg focus:border-accent focus:outline-none"
+                    >
+                      <option value="">(Sin profesor asignado)</option>
+                      {professors.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName} {p.email ? `(${p.email})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-1">
@@ -431,6 +490,35 @@ export function ScheduleManagementModal({
                               </span>
                             )}
                           </span>
+
+                          {/* Professor Assignment Selector */}
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <UserCheck size={12} className={sch.professorId ? "text-accent shrink-0" : "text-faint shrink-0"} />
+                            <div className="relative">
+                              <select
+                                value={sch.professorId || ""}
+                                disabled={actionLoading || assigningScheduleId === sch.id}
+                                onChange={(e) => handleAssignProfessor(sch.id, e.target.value || null)}
+                                className={cn(
+                                  "rounded-lg border text-[11px] py-0.5 px-2 bg-bg transition-colors focus:outline-none focus:border-accent",
+                                  sch.professorId
+                                    ? "border-accent/40 text-fg font-medium bg-accent/5"
+                                    : "border-border text-muted italic",
+                                  assigningScheduleId === sch.id && "opacity-60 cursor-wait"
+                                )}
+                              >
+                                <option value="">(Sin profesor asignado)</option>
+                                {professors.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.fullName} {p.email ? `(${p.email})` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {assigningScheduleId === sch.id && (
+                              <Loader2 size={12} className="animate-spin text-accent ml-1" />
+                            )}
+                          </div>
                         </div>
                       </div>
 

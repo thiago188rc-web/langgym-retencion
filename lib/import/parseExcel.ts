@@ -73,7 +73,7 @@ export function parseExcel(data: ArrayBuffer, config: Config): ImportResult {
   const matrix = readMatrix(data);
   if (matrix.length === 0) {
     return {
-      mapping: { byHeader: {}, byField: {}, unmapped: [], missingRequired: ["idSocio", "nombre"] },
+      mapping: { byHeader: {}, byField: {}, unmapped: [], missingRequired: ["nombre"] },
       nuevos: 0,
       actualizados: 0,
       errores: [{ fila: 0, motivo: "El archivo está vacío o no se pudo leer.", datos: {} }],
@@ -90,7 +90,7 @@ export function parseExcel(data: ArrayBuffer, config: Config): ImportResult {
   let headerless = false;
 
   if (headerMatch && mapping && mapping.missingRequired.length === 0) {
-    // Normal path: a real header row was found and it resolves idSocio + nombre.
+    // Normal path: a real header row was found and it resolves required fields.
     headers = headerMatch.headers;
     rows = rowsToObjects(matrix.slice(headerMatch.headerIdx + 1), headers);
   } else {
@@ -101,13 +101,13 @@ export function parseExcel(data: ArrayBuffer, config: Config): ImportResult {
     const sniffed = sniffPositionalMapping(matrix);
     if (!sniffed) {
       return {
-        mapping: mapping ?? { byHeader: {}, byField: {}, unmapped: [], missingRequired: ["idSocio", "nombre"] },
+        mapping: mapping ?? { byHeader: {}, byField: {}, unmapped: [], missingRequired: ["nombre"] },
         nuevos: 0,
         actualizados: 0,
         errores: [
           {
             fila: 0,
-            motivo: "No se reconocieron columnas obligatorias: idSocio, nombre",
+            motivo: "No se reconocieron columnas obligatorias: nombre",
             datos: { primeraFila: matrix[0] ?? [] },
           },
         ],
@@ -143,32 +143,56 @@ export function parseExcel(data: ArrayBuffer, config: Config): ImportResult {
     const fila = index + 2; // human row number (1 = header)
     const idSocioRaw = cleanCell(field(row, mapping!.byField, "idSocio"));
     const nombreRaw = cleanCell(field(row, mapping!.byField, "nombre"));
+    const apellidoRaw = cleanCell(field(row, mapping!.byField, "apellido"));
 
-    if (!idSocioRaw && !nombreRaw) return; // empty row
+    if (!idSocioRaw && !nombreRaw && !apellidoRaw) return; // empty row
 
-    if (!idSocioRaw) {
-      errores.push({ fila, motivo: "Falta idSocio", datos: row });
+    if (!nombreRaw && !apellidoRaw) {
+      errores.push({ fila, motivo: "Falta nombre/apellido", datos: row });
       return;
     }
-    if (!nombreRaw) {
-      errores.push({ fila, motivo: "Falta nombre", datos: row });
-      return;
-    }
-    if (seen.has(idSocioRaw)) {
-      errores.push({ fila, motivo: `idSocio duplicado en el archivo (${idSocioRaw})`, datos: row });
-      return;
-    }
-    seen.add(idSocioRaw);
 
-    const { nombre, apellido, nombreCompleto } = splitName(nombreRaw);
     const { telefono, telefonoRaw } = normalizePhone(
       cleanCell(field(row, mapping!.byField, "celular")),
       cleanCell(field(row, mapping!.byField, "telefono")),
       config,
     );
 
+    let idSocio = idSocioRaw;
+    if (!idSocio) {
+      // Synthesize stable idSocio from phone digits or row number if idSocio is absent
+      const baseId = telefono ? `TEL-${telefono}` : `ROW-${fila}`;
+      idSocio = seen.has(baseId) ? `${baseId}-${fila}` : baseId;
+    } else {
+      if (seen.has(idSocio)) {
+        errores.push({ fila, motivo: `idSocio duplicado en el archivo (${idSocio})`, datos: row });
+        return;
+      }
+    }
+    seen.add(idSocio);
+
+    let nombre = "";
+    let apellido = "";
+    let nombreCompleto = "";
+
+    if (nombreRaw && apellidoRaw) {
+      // Both columns are explicitly provided
+      nombre = nombreRaw;
+      apellido = apellidoRaw;
+      nombreCompleto = `${nombreRaw} ${apellidoRaw}`.trim();
+    } else if (nombreRaw) {
+      const split = splitName(nombreRaw);
+      nombre = split.nombre;
+      apellido = split.apellido;
+      nombreCompleto = split.nombreCompleto;
+    } else if (apellidoRaw) {
+      apellido = apellidoRaw;
+      nombre = "";
+      nombreCompleto = apellidoRaw;
+    }
+
     parsedStudents.push({
-      idSocio: idSocioRaw,
+      idSocio,
       nombre,
       apellido,
       nombreCompleto,

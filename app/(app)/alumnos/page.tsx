@@ -5,11 +5,15 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Search, Users } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { withSignals } from "@/lib/selectors";
+import { filterByImport } from "@/lib/retention";
 import { Avatar } from "@/components/ui/Avatar";
 import { CuotaBadge, RiesgoBadge } from "@/components/students/StatusBadges";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NoData } from "@/components/NoData";
 import { PanelLoading } from "@/components/shared/PanelLoading";
+import { LastImportFilterBanner } from "@/components/shared/LastImportFilterBanner";
+import { WhatsappButton } from "@/components/students/WhatsappButton";
+import { cobroMessage, recuperacionMessage } from "@/lib/whatsapp";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { relativeDays } from "@/lib/dates";
@@ -33,6 +37,8 @@ export default function AlumnosPage() {
   const [activeTab, setActiveTab] = useState<"siga" | "cuentas">("siga");
   const students = useStore((s) => s.students);
   const config = useStore((s) => s.config);
+  const showOnlyLastImport = useStore((s) => s.showOnlyLastImport);
+  const latestImportId = useStore((s) => s.latestImportId);
   const hasSyncedOnce = useStore((s) => s.hasSyncedOnce);
   const isLoadingFromSupabase = useStore((s) => s.isLoadingFromSupabase);
   const [query, setQuery] = useState("");
@@ -40,19 +46,25 @@ export default function AlumnosPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
+  const importFiltered = useMemo(
+    () => (showOnlyLastImport ? filterByImport(students, latestImportId) : students),
+    [students, showOnlyLastImport, latestImportId],
+  );
+
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return withSignals(students, config)
+    return withSignals(importFiltered, config)
       .filter((x) => (estado === "all" ? true : x.signals.estadoCuota === estado))
       .filter((x) =>
         q === ""
           ? true
           : x.student.nombreCompleto.toLowerCase().includes(q) ||
             x.student.idSocio.toLowerCase().includes(q) ||
-            (x.student.telefonoRaw ?? "").includes(q),
+            (x.student.telefonoRaw ?? "").includes(q) ||
+            (x.student.telefono ?? "").includes(q),
       )
       .sort((a, b) => a.student.nombreCompleto.localeCompare(b.student.nombreCompleto));
-  }, [students, config, query, estado]);
+  }, [importFiltered, config, query, estado]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -108,89 +120,105 @@ export default function AlumnosPage() {
         <NoData />
       ) : (
         <>
-      {/* Top Filter and Search Bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-          <Input
-            placeholder="Buscar por nombre, ID o teléfono…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
-            aria-label="Buscar alumnos"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setEstado(f.key)}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
-                estado === f.key
-                  ? "border-accent/30 bg-accent/12 text-accent"
-                  : "border-border bg-card/50 text-muted hover:text-fg",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          <LastImportFilterBanner totalCount={students.length} filteredCount={importFiltered.length} />
 
-      {totalRows === 0 ? (
-        <EmptyState icon={Users} title="Sin resultados" description="Probá con otro nombre o filtro." />
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-[16px] border border-border bg-card">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-[12px] uppercase tracking-wide text-faint">
-                  <th className="px-4 py-3 font-semibold">Alumno</th>
-                  <th className="hidden px-4 py-3 font-semibold md:table-cell">Teléfono</th>
-                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Membresía</th>
-                  <th className="px-4 py-3 font-semibold">Cuota</th>
-                  <th className="hidden px-4 py-3 font-semibold sm:table-cell">Última visita</th>
-                  <th className="px-4 py-3 font-semibold">Riesgo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedRows.map(({ student, signals }) => (
-                  <tr
-                    key={student.id}
-                    className="group border-b border-border/60 transition-colors last:border-0 hover:bg-white/[0.02]"
-                  >
-                    <td className="px-4 py-2.5">
-                      <Link href={`/alumnos/${student.id}`} className="flex items-center gap-3">
-                        <Avatar nombre={student.nombre} apellido={student.apellido} size={34} />
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-fg group-hover:text-accent">
-                            {student.nombreCompleto}
-                          </div>
-                          <div className="tnum text-[12px] text-faint">#{student.idSocio}</div>
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="tnum hidden px-4 py-2.5 text-muted md:table-cell">
-                      {student.telefonoRaw ?? "—"}
-                    </td>
-                    <td className="hidden px-4 py-2.5 text-muted lg:table-cell">
-                      {student.membresia ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <CuotaBadge estado={signals.estadoCuota} />
-                    </td>
-                    <td className="hidden px-4 py-2.5 text-muted sm:table-cell">
-                      {student.ultimaAsistencia ? relativeDays(student.ultimaAsistencia) : "Sin datos"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <RiesgoBadge nivel={signals.riesgo} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Top Filter and Search Bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <Input
+                placeholder="Buscar por nombre, ID o teléfono…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-9"
+                aria-label="Buscar alumnos"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setEstado(f.key)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
+                    estado === f.key
+                      ? "border-accent/30 bg-accent/12 text-accent"
+                      : "border-border bg-card/50 text-muted hover:text-fg",
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {totalRows === 0 ? (
+            <EmptyState icon={Users} title="Sin resultados" description="Probá con otro nombre o filtro." />
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-[16px] border border-border bg-card">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-[12px] uppercase tracking-wide text-faint">
+                      <th className="px-4 py-3 font-semibold">Alumno</th>
+                      <th className="hidden px-4 py-3 font-semibold md:table-cell">Teléfono</th>
+                      <th className="hidden px-4 py-3 font-semibold lg:table-cell">Membresía</th>
+                      <th className="px-4 py-3 font-semibold">Cuota</th>
+                      <th className="hidden px-4 py-3 font-semibold sm:table-cell">Última visita</th>
+                      <th className="px-4 py-3 font-semibold">Riesgo</th>
+                      <th className="px-4 py-3 font-semibold text-right">Contacto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedRows.map(({ student, signals }) => (
+                      <tr
+                        key={student.id}
+                        className="group border-b border-border/60 transition-colors last:border-0 hover:bg-white/[0.02]"
+                      >
+                        <td className="px-4 py-2.5">
+                          <Link href={`/alumnos/${student.id}`} className="flex items-center gap-3">
+                            <Avatar nombre={student.nombre} apellido={student.apellido} size={34} />
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-fg group-hover:text-accent">
+                                {student.nombreCompleto}
+                              </div>
+                              <div className="tnum text-[12px] text-faint">#{student.idSocio}</div>
+                            </div>
+                          </Link>
+                        </td>
+                        <td className="tnum hidden px-4 py-2.5 text-muted md:table-cell">
+                          {student.telefonoRaw ?? "—"}
+                        </td>
+                        <td className="hidden px-4 py-2.5 text-muted lg:table-cell">
+                          {student.membresia ?? "—"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <CuotaBadge estado={signals.estadoCuota} />
+                        </td>
+                        <td className="hidden px-4 py-2.5 text-muted sm:table-cell">
+                          {student.ultimaAsistencia ? relativeDays(student.ultimaAsistencia) : "Sin datos"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <RiesgoBadge nivel={signals.riesgo} />
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <WhatsappButton
+                            student={student}
+                            message={
+                              signals.estadoCuota === "vencida" || signals.diasParaVencer === 0
+                                ? cobroMessage(student, config)
+                                : recuperacionMessage(student, config)
+                            }
+                            tipo={signals.estadoCuota === "vencida" ? "cobro" : "recuperacion"}
+                            size="sm"
+                            label=""
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
           {/* Pagination Controls */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">

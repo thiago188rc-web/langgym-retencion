@@ -351,10 +351,18 @@ export default function AdminClassesPage() {
 
   // Handle Attendance Update (Presente / Ausente)
   const handleUpdateAttendance = async (
-    reservationId: string,
+    reservationId: string | null,
     status: "attended" | "no_show" | "confirmed",
+    attendee?: ClassAttendee,
   ) => {
-    const res = await updateReservationAttendance(reservationId, status);
+    const res = await updateReservationAttendance(
+      reservationId,
+      status,
+      selectedClassForAttendees?.scheduleId,
+      selectedDate,
+      attendee?.userId || null,
+      attendee?.studentId || null,
+    );
     if (res.success) {
       const statusLabel =
         status === "attended" ? "presente" : status === "no_show" ? "ausente" : "pendiente";

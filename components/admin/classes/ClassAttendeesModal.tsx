@@ -26,7 +26,11 @@ interface ClassAttendeesModalProps {
   attendees: ClassAttendee[];
   loading: boolean;
   onClose: () => void;
-  onUpdateAttendance: (reservationId: string, status: "attended" | "no_show" | "confirmed") => Promise<void>;
+  onUpdateAttendance: (
+    reservationId: string | null,
+    status: "attended" | "no_show" | "confirmed",
+    attendee: ClassAttendee,
+  ) => Promise<void>;
   onCancelReservation: (attendee: ClassAttendee) => void;
   onOpenManualBooking: () => void;
 }
@@ -86,12 +90,14 @@ export function ClassAttendeesModal({
   if (!classItem) return null;
 
   const handleAttendanceClick = async (
-    reservationId: string,
+    reservationId: string | null,
     status: "attended" | "no_show" | "confirmed",
+    attendee: ClassAttendee,
   ) => {
-    setActionInProgressId(reservationId);
+    const actionKey = reservationId || attendee.userId || attendee.studentId || attendee.displayName;
+    setActionInProgressId(actionKey);
     try {
-      await onUpdateAttendance(reservationId, status);
+      await onUpdateAttendance(reservationId, status, attendee);
     } finally {
       setActionInProgressId(null);
     }
@@ -350,7 +356,7 @@ export function ClassAttendeesModal({
                           <button
                             type="button"
                             disabled={isProcessing || isAttended}
-                            onClick={() => handleAttendanceClick(attendee.reservationId, "attended")}
+                            onClick={() => handleAttendanceClick(attendee.reservationId, "attended", attendee)}
                             title="Marcar Presente"
                             className={cn(
                               "flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all active:scale-95",
@@ -367,7 +373,7 @@ export function ClassAttendeesModal({
                           <button
                             type="button"
                             disabled={isProcessing || isNoShow}
-                            onClick={() => handleAttendanceClick(attendee.reservationId, "no_show")}
+                            onClick={() => handleAttendanceClick(attendee.reservationId, "no_show", attendee)}
                             title="Marcar Ausente"
                             className={cn(
                               "flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all active:scale-95",
@@ -385,7 +391,7 @@ export function ClassAttendeesModal({
                             <button
                               type="button"
                               disabled={isProcessing}
-                              onClick={() => handleAttendanceClick(attendee.reservationId, "confirmed")}
+                              onClick={() => handleAttendanceClick(attendee.reservationId, "confirmed", attendee)}
                               title="Restablecer a Pendiente"
                               aria-label="Restablecer a Pendiente"
                               className="flex size-8 items-center justify-center rounded-xl border border-border bg-surface text-muted hover:text-fg transition-colors"

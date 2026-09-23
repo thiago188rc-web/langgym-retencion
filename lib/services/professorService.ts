@@ -57,10 +57,10 @@ export async function getProfessorClassRoster(): Promise<{
         };
         groups.set(row.class_schedule_id, group);
       }
-      if (row.enrollment_id && row.enrolled_name) {
+      if (row.enrollment_id) {
         group.roster.push({
           enrollmentId: row.enrollment_id,
-          name: row.enrolled_name,
+          name: row.enrolled_name || "Alumno sin nombre",
           phone: row.enrolled_phone,
           status: row.enrollment_status as RosterEntry["status"],
         });
@@ -128,9 +128,9 @@ export async function getProfessorDayRoster(
         };
         classes.set(row.class_schedule_id, cls);
       }
-      if (row.user_id) {
+      if (row.user_id || row.reservation_id || row.attendee_name) {
         cls.attendees.push({
-          userId: row.user_id,
+          userId: row.user_id || row.reservation_id || `att-${Date.now()}`,
           name: row.attendee_name || "Alumno sin nombre",
           phone: row.attendee_phone,
           reservationId: row.reservation_id,

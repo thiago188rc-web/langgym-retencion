@@ -85,6 +85,7 @@ export interface Config {
 export type CanonicalField =
   | "idSocio"
   | "nombre"
+  | "apellido"
   | "habilitado"
   | "idMembresia"
   | "membresia"

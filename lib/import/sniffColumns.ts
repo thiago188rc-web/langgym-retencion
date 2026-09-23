@@ -123,17 +123,18 @@ export function sniffPositionalMapping(rows: unknown[][]): SniffedMapping | null
 
   const byField: Partial<Record<CanonicalField, string>> = {};
 
-  // Required fields first, with a meaningful confidence bar — if either is
-  // missing, this file just isn't a recognizable headerless student list.
-  const idCol = bestColumn(scoreIdSocio, 0.6);
-  if (idCol === -1) return null;
-  byField.idSocio = headers[idCol];
-  used.add(idCol);
-
+  // Required field: nombre (must have high confidence).
   const nameCol = bestColumn(scoreNombre, 0.6);
   if (nameCol === -1) return null;
   byField.nombre = headers[nameCol];
   used.add(nameCol);
+
+  // idSocio is preferred if present, but optional (synthesized if absent).
+  const idCol = bestColumn(scoreIdSocio, 0.6);
+  if (idCol !== -1) {
+    byField.idSocio = headers[idCol];
+    used.add(idCol);
+  }
 
   // Optional fields — best-effort; a field is simply left unmapped (visible
   // to the user as an ignored/unmapped column) if nothing is confident.

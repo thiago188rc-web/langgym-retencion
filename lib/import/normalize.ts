@@ -82,6 +82,19 @@ export function normalizePhone(
   // Too short to be a real number — keep raw, no wa.me number.
   if (d.length < 8) return { telefono: null, telefonoRaw: rawSource };
 
+  // Argentine mobile numbers often contain '15' after the area code (e.g. 223155123456 or 111512345678).
+  // For international WhatsApp format (549...), the '15' must be stripped.
+  if (config.countryCode === "54") {
+    // Area codes in Argentina are 2 to 4 digits:
+    // 2-digit: 11 (AMBA) -> 11 + 15 + 8 digits (total 12 digits) -> 11 + 8 digits
+    // 3-digit: 223, 351, 261, etc. -> 3 digits + 15 + 7 digits (total 12 digits) -> 3 digits + 7 digits
+    // 4-digit: 2202, 2966, etc. -> 4 digits + 15 + 6 digits (total 12 digits) -> 4 digits + 6 digits
+    const ar15Match = d.match(/^(\d{2,4})15(\d{6,8})$/);
+    if (ar15Match && (ar15Match[1].length + ar15Match[2].length === 10)) {
+      d = `${ar15Match[1]}${ar15Match[2]}`;
+    }
+  }
+
   const intl = `${config.countryCode}${config.mobilePrefix}${d}`;
   return { telefono: intl, telefonoRaw: rawSource };
 }

@@ -51,6 +51,8 @@ export interface FullScheduleItem {
   endTime: string | null;
   capacity: number | null;
   active: boolean;
+  professorId?: string | null;
+  professorName?: string | null;
 }
 
 export interface FullClassTypeItem {
@@ -192,15 +194,23 @@ export async function getClassAttendees(
  * 3. Update reservation attendance (Presente, Ausente, Restablecer)
  */
 export async function updateReservationAttendance(
-  reservationId: string,
+  reservationId: string | null,
   status: "attended" | "no_show" | "confirmed",
+  scheduleId?: string | null,
+  classDate?: string | null,
+  userId?: string | null,
+  studentId?: string | null,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const supabase = createClient();
 
     const { data: res, error } = await supabase.rpc("admin_update_attendance", {
-      p_reservation_id: reservationId,
+      p_reservation_id: reservationId || null,
       p_status: status,
+      p_schedule_id: scheduleId || null,
+      p_class_date: classDate || null,
+      p_user_id: userId || null,
+      p_student_id: studentId || null,
     });
 
     if (error) {
@@ -217,6 +227,37 @@ export async function updateReservationAttendance(
   } catch (err: any) {
     console.error("Unexpected error in updateReservationAttendance:", err);
     return { success: false, error: "Error inesperado al registrar asistencia." };
+  }
+}
+
+/**
+ * Assign or unassign a professor to a recurring class schedule slot
+ */
+export async function adminAssignProfessorToSchedule(
+  scheduleId: string,
+  professorId: string | null,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("admin_assign_professor_to_schedule", {
+      p_schedule_id: scheduleId,
+      p_professor_id: professorId || null,
+    });
+
+    if (error) {
+      console.error("Error assigning professor to schedule:", error);
+      return { success: false, error: error.message || "No se pudo asignar el profesor." };
+    }
+
+    const parsed = data as { success: boolean; error?: string };
+    if (!parsed?.success) {
+      return { success: false, error: parsed?.error || "No se pudo asignar el profesor." };
+    }
+
+    return { success: true, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in adminAssignProfessorToSchedule:", err);
+    return { success: false, error: "Error inesperado al asignar el profesor al horario." };
   }
 }
 
@@ -376,7 +417,7 @@ export async function getAllClassTypesAndSchedules(): Promise<{
 
     const { data: schedules, error: schedError } = await supabase
       .from("class_schedules")
-      .select("id, class_type_id, day_of_week, start_time, end_time, capacity, active")
+      .select("id, class_type_id, day_of_week, start_time, end_time, capacity, active, professor_id")
       .order("day_of_week", { ascending: true })
       .order("start_time", { ascending: true });
 
@@ -385,10 +426,33 @@ export async function getAllClassTypesAndSchedules(): Promise<{
       return { data: [], error: "No se pudieron obtener los horarios." };
     }
 
+    // Fetch professor profiles to display their names
+    const profIds = Array.from(
+      new Set(
+        (schedules || [])
+          .map((s: any) => s.professor_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    let profMap = new Map<string, string>();
+    if (profIds.length > 0) {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", profIds);
+
+      if (profs) {
+        profs.forEach((p: any) => {
+          profMap.set(p.id, p.full_name || "Profesor");
+        });
+      }
+    }
+
     const fullList: FullClassTypeItem[] = (types || []).map((t) => {
       const matchedSchedules: FullScheduleItem[] = (schedules || [])
         .filter((s) => s.class_type_id === t.id)
-        .map((s) => ({
+        .map((s: any) => ({
           id: s.id,
           classTypeId: s.class_type_id,
           className: t.name,
@@ -398,6 +462,8 @@ export async function getAllClassTypesAndSchedules(): Promise<{
           endTime: s.end_time ? s.end_time.slice(0, 5) : null,
           capacity: s.capacity,
           active: s.active,
+          professorId: s.professor_id || null,
+          professorName: s.professor_id ? profMap.get(s.professor_id) || null : null,
         }));
 
       return {
@@ -689,4 +755,44 @@ export async function deleteClassSchedule(
     return { success: false, error: "Error inesperado al eliminar el horario." };
   }
 }
+
+export interface ProfessorOption {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+/**
+ * 13. Fetch all active professors belonging to the current organization
+ */
+export async function getOrgProfessors(): Promise<{
+  data: ProfessorOption[];
+  error: string | null;
+}> {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("role", "profesor")
+      .order("full_name", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching professors:", error);
+      return { data: [], error: "No se pudieron obtener los profesores." };
+    }
+
+    const profs: ProfessorOption[] = (data || []).map((p: any) => ({
+      id: p.id,
+      fullName: p.full_name || p.email || "Profesor sin nombre",
+      email: p.email || "",
+    }));
+
+    return { data: profs, error: null };
+  } catch (err: any) {
+    console.error("Unexpected error in getOrgProfessors:", err);
+    return { data: [], error: "Error inesperado al consultar los profesores." };
+  }
+}
+
 
