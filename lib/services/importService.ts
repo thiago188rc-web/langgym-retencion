@@ -54,8 +54,9 @@ export async function syncExcelImportToSupabase(
     "observacion",
   ]),
   onProgress?: (step: string, pct?: number) => void,
+  customSupabaseClient?: any,
 ): Promise<SyncImportResult> {
-  const supabase = createClient();
+  const supabase = customSupabaseClient || createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

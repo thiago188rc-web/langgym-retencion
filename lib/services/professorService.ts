@@ -102,9 +102,10 @@ export interface DayClass {
  */
 export async function getProfessorDayRoster(
   dateISO: string,
+  customClient?: any,
 ): Promise<{ data: DayClass[]; error: string | null }> {
   try {
-    const supabase = createClient();
+    const supabase = customClient || createClient();
     const { data, error } = await supabase.rpc("get_professor_day_roster", { p_date: dateISO });
 
     if (error) {
