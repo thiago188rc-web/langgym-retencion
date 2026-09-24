@@ -129,6 +129,10 @@ export async function getProfessorDayRoster(
         classes.set(row.class_schedule_id, cls);
       }
       if (row.user_id || row.reservation_id || row.attendee_name) {
+        // Alumnos con reserva o asistencia cancelada no deben aparecer en la planilla activa del profesor
+        if (row.attendance_status === "cancelled") {
+          continue;
+        }
         cls.attendees.push({
           userId: row.user_id || row.reservation_id || `att-${Date.now()}`,
           name: row.attendee_name || "Alumno sin nombre",

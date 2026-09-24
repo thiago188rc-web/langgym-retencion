@@ -379,9 +379,12 @@ export default function AdminClassesPage() {
     }
   };
 
+  const [cancelWeeklyToo, setCancelWeeklyToo] = useState<boolean>(false);
+
   // Handle Cancellation confirmation open
   const handleOpenCancelConfirmation = (attendee: ClassAttendee) => {
     setAttendeeToCancel(attendee);
+    setCancelWeeklyToo(false);
     setCancelModalOpen(true);
   };
 
@@ -391,8 +394,31 @@ export default function AdminClassesPage() {
     setCancelling(true);
 
     try {
-      const res = await adminCancelReservation(attendeeToCancel.reservationId);
+      const res = await adminCancelReservation(
+        attendeeToCancel.reservationId,
+        selectedClassForAttendees?.scheduleId,
+        selectedDate,
+        attendeeToCancel.userId,
+        attendeeToCancel.studentId,
+      );
+
       if (res.success) {
+        if (cancelWeeklyToo && selectedClassForAttendees?.scheduleId) {
+          const supabase = (await import("@/lib/supabase/client")).createClient();
+          let enrQuery = supabase
+            .from("class_enrollments")
+            .update({ status: "cancelled", decided_at: new Date().toISOString() })
+            .eq("class_schedule_id", selectedClassForAttendees.scheduleId)
+            .eq("status", "active");
+          if (attendeeToCancel.userId) {
+            enrQuery = enrQuery.eq("user_id", attendeeToCancel.userId);
+          } else if (attendeeToCancel.studentId) {
+            enrQuery = enrQuery.eq("student_id", attendeeToCancel.studentId);
+          }
+          await enrQuery;
+          await fetchActiveEnrollments();
+        }
+
         toast.push(
           `Reserva de ${attendeeToCancel.displayName} cancelada. Lugar liberado.`,
           "info",
@@ -947,6 +973,21 @@ export default function AdminClassesPage() {
           <div className="rounded-xl border border-border bg-surface/80 p-3 text-[11px] text-muted">
             El cupo quedará liberado inmediatamente para que otros alumnos puedan anotarse.
           </div>
+
+          <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-border/80 bg-surface/50 p-2.5 hover:bg-surface transition-colors">
+            <input
+              type="checkbox"
+              checked={cancelWeeklyToo}
+              onChange={(e) => setCancelWeeklyToo(e.target.checked)}
+              className="mt-0.5 size-4 rounded border-border text-accent focus:ring-accent"
+            />
+            <div className="text-[12px]">
+              <span className="font-semibold text-fg">Liberar también el turno fijo semanal</span>
+              <p className="text-[11px] text-muted leading-tight mt-0.5">
+                Si está marcado, se cancela su turno recurrente y no volverá a aparecer en semanas futuras.
+              </p>
+            </div>
+          </label>
 
           <div className="flex items-center justify-end gap-2.5 pt-2">
             <button

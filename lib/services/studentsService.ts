@@ -112,31 +112,32 @@ export async function fetchStudentsFromSupabase(organizationId: string): Promise
       .order("id", { ascending: true }),
   ).catch(() => [] as FollowUpRow[]);
 
-  // 3. Fetch snapshots (paginated)
-  const snapshotRows = await fetchAllRows<SnapshotRow>(() =>
-    supabase
-      .from("snapshots")
-      .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
-      .eq("organization_id", organizationId)
-      .order("fecha", { ascending: false })
-      .order("id", { ascending: true }),
-  ).catch(() => [] as SnapshotRow[]);
-
   const fuByStudent: Record<string, FollowUpRow[]> = {};
   (followUpRows || []).forEach((fu) => {
     if (!fuByStudent[fu.student_id]) fuByStudent[fu.student_id] = [];
     fuByStudent[fu.student_id].push(fu);
   });
 
-  const snapByStudent: Record<string, SnapshotRow[]> = {};
-  (snapshotRows || []).forEach((snap) => {
-    if (!snapByStudent[snap.student_id]) snapByStudent[snap.student_id] = [];
-    snapByStudent[snap.student_id].push(snap);
+  // Synthesize lightweight snapshot directly from the student's current state.
+  // The database `snapshots` table preserves full audit history, but downloading
+  // 20,000+ historical rows on every load was causing huge latency and 20+ sequential HTTP requests.
+  return studentRows.map((row) => {
+    const studentSnaps: SnapshotRow[] =
+      row.fecha_fin || row.ultima_asistencia
+        ? [
+            {
+              id: row.id,
+              student_id: row.id,
+              fecha: row.updated_at,
+              fecha_fin: row.fecha_fin,
+              ultima_asistencia: row.ultima_asistencia,
+              membresia: row.membresia,
+              habilitado: row.habilitado,
+            },
+          ]
+        : [];
+    return mapRowToStudent(row, fuByStudent[row.id] || [], studentSnaps);
   });
-
-  return studentRows.map((row) =>
-    mapRowToStudent(row, fuByStudent[row.id] || [], snapByStudent[row.id] || []),
-  );
 }
 
 /** id of the most recent import_records row for this org, or null if none yet. */

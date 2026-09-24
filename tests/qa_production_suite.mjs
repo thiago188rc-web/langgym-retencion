@@ -306,11 +306,11 @@ async function runProductionQASuite() {
   // 6. PERSISTENCIA & SERVICIOS
   console.log("\n💾 6. Persistencia, Sincronización & Bajas:");
   const importSvc = fs.readFileSync(path.resolve(process.cwd(), "lib/services/importService.ts"), "utf-8");
-  check("PERSISTENCIA", "Import service realiza inserciones en chunks de 100",
-    importSvc.includes("chunkArray(toInsert, 100)")
+  check("PERSISTENCIA", "Import service realiza bulk upserts en chunks para optimizar requests",
+    importSvc.includes("chunkArray") && importSvc.includes(".upsert(")
   );
-  check("PERSISTENCIA", "Import service actualiza en batches concurrentes de 15",
-    importSvc.includes("chunkArray(toUpdate, 15)")
+  check("PERSISTENCIA", "Import service utiliza onConflict para resolver inserciones y actualizaciones en bulk",
+    importSvc.includes('onConflict: "organization_id, id_socio"') || importSvc.includes("onConflict")
   );
   check("PERSISTENCIA", "Import service registra snapshots históricos para auditoría",
     importSvc.includes('supabase.from("snapshots").insert') || importSvc.includes('.from("snapshots")')

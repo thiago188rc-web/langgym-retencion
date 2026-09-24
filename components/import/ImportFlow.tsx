@@ -27,7 +27,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { syncExcelImportToSupabase } from "@/lib/services/importService";
 import type { ColumnMapping, ImportError, CanonicalField } from "@/lib/types";
 
-type Phase = "idle" | "processing" | "done";
+type Phase = "idle" | "processing" | "done" | "error";
 
 interface Outcome {
   archivo: string;
@@ -76,6 +76,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function ImportFlow() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [stage, setStage] = useState(0);
+  const [syncSubStatus, setSyncSubStatus] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const applyImport = useStore((s) => s.applyImport);
   const setSyncedData = useStore((s) => s.setSyncedData);
@@ -99,17 +102,20 @@ export function ImportFlow() {
       return;
     }
 
+    setLastFile(file);
+    setErrorMessage(null);
+    setSyncSubStatus(null);
     setPhase("processing");
     setStage(0); // 1. Archivo seleccionado
     try {
-      await sleep(350);
+      await sleep(250);
       setStage(1); // 2. Validando formato y columnas
       const buffer = await file.arrayBuffer();
-      await sleep(350);
+      await sleep(250);
 
       const result = parseExcel(buffer, config);
       setStage(2); // 3. Procesando alumnos
-      await sleep(400);
+      await sleep(250);
 
       if (result.mapping.missingRequired.length > 0) {
         push("No pudimos reconocer las columnas obligatorias", "warning");
@@ -133,9 +139,10 @@ export function ImportFlow() {
       }
 
       setStage(3); // 4. Comparando con base histórica
-      await sleep(400);
+      await sleep(250);
 
       setStage(4); // 5. Sincronizando en la nube
+      setSyncSubStatus("Conectando con el servidor...");
 
       let nuevos = 0;
       let actualizados = 0;
@@ -146,12 +153,20 @@ export function ImportFlow() {
       if (organization?.id) {
         try {
           const presentFields = new Set(Object.keys(result.mapping.byField) as CanonicalField[]);
-          const syncRes = await syncExcelImportToSupabase(
+          
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("La sincronización tardó demasiado tiempo en responder (timeout de 60s).")), 60000)
+          );
+
+          const syncPromise = syncExcelImportToSupabase(
             organization.id,
             file.name,
             result.parsedStudents,
             presentFields,
+            (stepText) => setSyncSubStatus(stepText),
           );
+
+          const syncRes = await Promise.race([syncPromise, timeoutPromise]);
           nuevos = syncRes.nuevos;
           actualizados = syncRes.actualizados;
           sinCambios = syncRes.sinCambios;
@@ -159,11 +174,10 @@ export function ImportFlow() {
           setSyncedData(syncRes.syncedStudents, syncRes.importRecord);
         } catch (syncErr: any) {
           console.error("Error sincronizando importación con Supabase:", syncErr);
-          push(
-            syncErr?.message || "Ocurrió un error al guardar los alumnos en el servidor. Por favor reintentá.",
-            "danger",
-          );
-          setPhase("idle");
+          const msg = syncErr?.message || "Ocurrió un error al guardar los alumnos en el servidor.";
+          push(`Error al sincronizar: ${msg}`, "danger");
+          setErrorMessage(msg);
+          setPhase("error");
           return;
         }
       } else {
@@ -175,9 +189,9 @@ export function ImportFlow() {
         recuperados = summary.recuperadosDetectados;
       }
 
-      await sleep(400);
+      await sleep(300);
       setStage(5); // 6. Finalizado
-      await sleep(250);
+      await sleep(200);
 
       setOutcome({
         archivo: file.name,
@@ -197,7 +211,8 @@ export function ImportFlow() {
       push(`Importación lista · ${nuevos} nuevos, ${actualizados} actualizados`, "success");
     } catch {
       push("No pudimos leer el archivo. ¿Es un Excel válido?", "warning");
-      setPhase("idle");
+      setErrorMessage("No se pudo procesar el archivo. Verificá que sea una planilla Excel o CSV válida.");
+      setPhase("error");
     }
   }
 
@@ -264,10 +279,16 @@ export function ImportFlow() {
                 </div>
                 <div>
                   <p className="text-[15px] font-semibold text-fg">{STAGES[stage].label}…</p>
-                  <p className="mt-1 text-sm text-muted">Procesando tu archivo de forma segura</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {stage === 4 && syncSubStatus ? (
+                      <span className="font-medium text-accent animate-pulse">{syncSubStatus}</span>
+                    ) : (
+                      "Procesando tu archivo de forma segura"
+                    )}
+                  </p>
                 </div>
                 <Progress value={STAGES[stage].pct} />
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 text-left">
                   {STAGES.map((s, i) => (
                     <div
                       key={s.label}
@@ -276,15 +297,64 @@ export function ImportFlow() {
                       }`}
                     >
                       {i < stage ? (
-                        <CheckCircle2 size={14} />
+                        <CheckCircle2 size={14} className="shrink-0" />
                       ) : i === stage ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Loader2 size={14} className="animate-spin shrink-0 text-accent" />
                       ) : (
-                        <span className="size-3.5 rounded-full border border-current" />
+                        <span className="size-3.5 rounded-full border border-current shrink-0" />
                       )}
-                      {s.label}
+                      <span>{s.label}</span>
+                      {i === stage && stage === 4 && syncSubStatus && (
+                        <span className="ml-auto text-xs text-muted truncate max-w-[200px]">{syncSubStatus}</span>
+                      )}
                     </div>
                   ))}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        {phase === "error" && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="space-y-4"
+          >
+            <Card className="overflow-hidden border-danger/30">
+              <div className="flex items-center gap-4 border-b border-danger/20 bg-danger/5 px-6 py-5">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-danger/15 text-danger">
+                  <AlertTriangle size={24} />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-[17px] font-semibold text-danger">
+                    Error al sincronizar con la nube
+                  </h2>
+                  <p className="text-sm text-muted">
+                    {lastFile ? `Archivo: ${lastFile.name}` : "Hubo un fallo durante la comunicación con el servidor"}
+                  </p>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm text-fg">
+                  <p className="font-semibold text-danger mb-1">Causa del error:</p>
+                  <p className="font-mono text-xs break-words text-muted">{errorMessage || "Error desconocido de red o timeout."}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  {lastFile && (
+                    <Button
+                      onClick={() => handleFile(lastFile)}
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RefreshCw size={15} />
+                      Reintentar sincronización
+                    </Button>
+                  )}
+                  <Button variant="secondary" onClick={restart}>
+                    Seleccionar otro archivo
+                  </Button>
                 </div>
               </div>
             </Card>

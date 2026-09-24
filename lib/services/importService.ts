@@ -53,6 +53,7 @@ export async function syncExcelImportToSupabase(
     "celular",
     "observacion",
   ]),
+  onProgress?: (step: string, pct?: number) => void,
 ): Promise<SyncImportResult> {
   const supabase = createClient();
   const {
@@ -139,21 +140,21 @@ export async function syncExcelImportToSupabase(
 
   const toUpdate: Array<{
     id: string;
-    data: {
-      nombre: string;
-      apellido: string;
-      nombre_completo: string;
-      telefono: string | null;
-      telefono_raw: string | null;
-      email: string | null;
-      habilitado: boolean;
-      id_membresia: string | null;
-      membresia: string | null;
-      fecha_fin: string | null;
-      fecha_alta: string | null;
-      ultima_asistencia: string | null;
-      observacion: string | null;
-    };
+    organization_id: string;
+    id_socio: string;
+    nombre: string;
+    apellido: string;
+    nombre_completo: string;
+    telefono: string | null;
+    telefono_raw: string | null;
+    email: string | null;
+    habilitado: boolean;
+    id_membresia: string | null;
+    membresia: string | null;
+    fecha_fin: string | null;
+    fecha_alta: string | null;
+    ultima_asistencia: string | null;
+    observacion: string | null;
   }> = [];
 
   // Students matched this import but had nothing to change — still part of
@@ -254,25 +255,25 @@ export async function syncExcelImportToSupabase(
         actualizadosCount++;
         toUpdate.push({
           id: existing.id,
-          data: {
-            nombre: item.nombre,
-            apellido: item.apellido || "",
-            nombre_completo: item.nombreCompleto,
-            telefono,
-            telefono_raw: hasTelefonoCol ? item.telefonoRaw : existing.telefono_raw,
-            email: presentFields.has("email") ? item.email : existing.email,
-            habilitado,
-            id_membresia: presentFields.has("idMembresia") ? item.idMembresia : existing.id_membresia,
-            membresia,
-            fecha_fin: finDate,
-            fecha_alta: presentFields.has("fechaAlta")
-              ? item.fechaAlta
-                ? new Date(item.fechaAlta).toISOString()
-                : null
-              : existing.fecha_alta,
-            ultima_asistencia: asistDate,
-            observacion: presentFields.has("observacion") ? item.observacion : existing.observacion,
-          },
+          organization_id: organizationId,
+          id_socio: existing.id_socio,
+          nombre: item.nombre,
+          apellido: item.apellido || "",
+          nombre_completo: item.nombreCompleto || `${item.nombre} ${item.apellido || ""}`.trim(),
+          telefono,
+          telefono_raw: hasTelefonoCol ? item.telefonoRaw : existing.telefono_raw,
+          email: presentFields.has("email") ? item.email : existing.email,
+          habilitado,
+          id_membresia: presentFields.has("idMembresia") ? item.idMembresia : existing.id_membresia,
+          membresia,
+          fecha_fin: finDate,
+          fecha_alta: presentFields.has("fechaAlta")
+            ? item.fechaAlta
+              ? new Date(item.fechaAlta).toISOString()
+              : null
+            : existing.fecha_alta,
+          ultima_asistencia: asistDate,
+          observacion: presentFields.has("observacion") ? item.observacion : existing.observacion,
         });
       } else {
         sinCambiosCount++;
@@ -325,27 +326,34 @@ export async function syncExcelImportToSupabase(
     .single();
 
   const lastImportId = importRecRow?.id ?? null;
-  const toInsertWithImport = toInsert.map((row) => ({ ...row, last_import_id: lastImportId }));
-  const toUpdateWithImport = toUpdate.map((upd) => ({
-    ...upd,
-    data: { ...upd.data, last_import_id: lastImportId },
-  }));
 
-  // 3. Perform chunked batch insert for new students (100 per chunk)
-  if (toInsertWithImport.length > 0) {
-    const insertChunks = chunkArray(toInsertWithImport, 100);
-    for (const chunk of insertChunks) {
-      const { data: insertedStudents, error: insErr } = await supabase
+  // Combine inserts and updates into unified bulk upsert rows
+  const allUpsertRows = [
+    ...toInsert.map((row) => ({ ...row, last_import_id: lastImportId, updated_at: todayIso })),
+    ...toUpdate.map((row) => ({ ...row, last_import_id: lastImportId, updated_at: todayIso })),
+  ];
+
+  // 3. Perform bulk upsert in chunks of 200 (eliminates N+1 loop entirely)
+  if (allUpsertRows.length > 0) {
+    const upsertChunks = chunkArray(allUpsertRows, 200);
+    let processed = 0;
+    for (const chunk of upsertChunks) {
+      processed += chunk.length;
+      onProgress?.(
+        `Guardando alumnos (${processed} de ${allUpsertRows.length})...`,
+        90 + Math.round((processed / allUpsertRows.length) * 5),
+      );
+      const { data: upsertedStudents, error: upsErr } = await supabase
         .from("students")
-        .insert(chunk)
+        .upsert(chunk, { onConflict: "organization_id, id_socio" })
         .select("id, id_socio, fecha_fin, ultima_asistencia, membresia, habilitado");
 
-      if (insErr) {
-        throw new Error("Ocurrió un error al registrar los nuevos alumnos en el servidor.");
+      if (upsErr) {
+        console.error("Error en bulk upsert de alumnos:", upsErr);
+        throw new Error(`Error al registrar los alumnos en el servidor: ${upsErr.message}`);
       }
 
-      // Add initial snapshots for newly inserted students
-      (insertedStudents || []).forEach((st) => {
+      (upsertedStudents || []).forEach((st) => {
         snapshotInserts.push({
           organization_id: organizationId,
           student_id: st.id,
@@ -359,31 +367,26 @@ export async function syncExcelImportToSupabase(
     }
   }
 
-  // 4. Perform parallelized batch updates in concurrent batches of 15
-  if (toUpdateWithImport.length > 0) {
-    const updateBatches = chunkArray(toUpdateWithImport, 15);
-    for (const batch of updateBatches) {
-      await Promise.all(
-        batch.map((upd) => supabase.from("students").update(upd.data).eq("id", upd.id)),
-      );
-    }
-  }
-
-  // 4b. Stamp last_import_id on students that matched this import but had
-  // nothing else to change — otherwise they'd silently drop out of "solo
-  // esta importación" every time a re-import doesn't alter their data.
+  // 4. Stamp last_import_id on unchanged students in chunks of 200
   if (unchangedIds.length > 0 && lastImportId) {
+    onProgress?.("Actualizando referencias de importación...", 96);
     const idBatches = chunkArray(unchangedIds, 200);
     for (const batch of idBatches) {
-      await supabase.from("students").update({ last_import_id: lastImportId }).in("id", batch);
+      const { error: updErr } = await supabase
+        .from("students")
+        .update({ last_import_id: lastImportId })
+        .in("id", batch);
+      if (updErr) console.warn("Aviso al actualizar alumnos sin cambios:", updErr);
     }
   }
 
-  // 5. Batch insert snapshots in chunks of 100
+  // 5. Batch insert snapshots in chunks of 200
   if (snapshotInserts.length > 0) {
-    const snapChunks = chunkArray(snapshotInserts, 100);
+    onProgress?.("Guardando historial...", 97);
+    const snapChunks = chunkArray(snapshotInserts, 200);
     for (const chunk of snapChunks) {
-      await supabase.from("snapshots").insert(chunk);
+      const { error: snapErr } = await supabase.from("snapshots").insert(chunk);
+      if (snapErr) console.warn("Aviso al guardar historial de snapshots:", snapErr);
     }
   }
 
@@ -400,8 +403,8 @@ export async function syncExcelImportToSupabase(
     errores: erroresCount,
   };
 
-  // 6. Reload full student list with preserved follow-ups and snapshots
-  // (paginated — same 1000-row cap applies here).
+  // 6. Reload students and follow-ups with lightweight snapshot synthesis (no 20,000-row download waterfall)
+  onProgress?.("Finalizando sincronización...", 98);
   const allFreshRows = await fetchAllRows<any>(() =>
     supabase
       .from("students")
@@ -419,29 +422,29 @@ export async function syncExcelImportToSupabase(
       .order("id", { ascending: true }),
   ).catch(() => [] as any[]);
 
-  const allSnapshots = await fetchAllRows<any>(() =>
-    supabase
-      .from("snapshots")
-      .select("id, student_id, fecha, fecha_fin, ultima_asistencia, membresia, habilitado")
-      .eq("organization_id", organizationId)
-      .order("id", { ascending: true }),
-  ).catch(() => [] as any[]);
-
   const fuByStudent: Record<string, any[]> = {};
   allFollowUps.forEach((fu) => {
     if (!fuByStudent[fu.student_id]) fuByStudent[fu.student_id] = [];
     fuByStudent[fu.student_id].push(fu);
   });
 
-  const snapByStudent: Record<string, any[]> = {};
-  allSnapshots.forEach((sn) => {
-    if (!snapByStudent[sn.student_id]) snapByStudent[sn.student_id] = [];
-    snapByStudent[sn.student_id].push(sn);
+  const syncedStudents = allFreshRows.map((r) => {
+    const studentSnaps =
+      r.fecha_fin || r.ultima_asistencia
+        ? [
+            {
+              id: `snap-${r.id}`,
+              student_id: r.id,
+              fecha: r.updated_at,
+              fecha_fin: r.fecha_fin,
+              ultima_asistencia: r.ultima_asistencia,
+              membresia: r.membresia,
+              habilitado: r.habilitado,
+            },
+          ]
+        : [];
+    return mapRowToStudent(r, fuByStudent[r.id] || [], studentSnaps);
   });
-
-  const syncedStudents = allFreshRows.map((r) =>
-    mapRowToStudent(r, fuByStudent[r.id] || [], snapByStudent[r.id] || []),
-  );
 
   return {
     nuevos: nuevosCount,

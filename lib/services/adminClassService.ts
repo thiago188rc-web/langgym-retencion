@@ -265,14 +265,22 @@ export async function adminAssignProfessorToSchedule(
  * 4. Cancel a reservation from admin panel
  */
 export async function adminCancelReservation(
-  reservationId: string,
+  reservationId: string | null,
+  scheduleId?: string | null,
+  classDate?: string | null,
+  userId?: string | null,
+  studentId?: string | null,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const supabase = createClient();
 
     const { data: res, error } = await supabase.rpc("admin_update_attendance", {
-      p_reservation_id: reservationId,
+      p_reservation_id: reservationId || null,
       p_status: "cancelled",
+      p_schedule_id: scheduleId || null,
+      p_class_date: classDate || null,
+      p_user_id: userId || null,
+      p_student_id: studentId || null,
     });
 
     if (error) {

@@ -98,8 +98,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          // 3. Sincronizar datos de Supabase hacia Zustand Store para administradores
-          await syncFromSupabase(org.id);
+          // 3. Sincronizar datos de Supabase hacia Zustand Store solo para roles administrativos (owner, admin, staff)
+          // Profesores y clientes no usan el padrón general de retención y no deben demorar su carga inicial
+          if (prof.role !== "profesor" && prof.role !== "cliente") {
+            await syncFromSupabase(org.id);
+          }
         }
       }
     } catch (err) {

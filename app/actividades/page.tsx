@@ -16,6 +16,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 import { isProfesorRole, isKnownRole, INCOMPLETE_PROFILE_ROUTE } from "@/lib/auth/roleRouting";
 import {
   getProfessorClassRoster,
@@ -95,9 +96,10 @@ function DayClassCard({
   savingKey: string | null;
   onMark: (cls: DayClass, userId: string, next: "attended" | "no_show" | "confirmed") => void;
 }) {
-  const presentes = cls.attendees.filter((a) => a.status === "attended").length;
-  const ausentes = cls.attendees.filter((a) => a.status === "no_show").length;
-  const sinMarcar = cls.attendees.length - presentes - ausentes;
+  const activeAttendees = cls.attendees.filter((a) => a.status !== "cancelled");
+  const presentes = activeAttendees.filter((a) => a.status === "attended").length;
+  const ausentes = activeAttendees.filter((a) => a.status === "no_show").length;
+  const sinMarcar = activeAttendees.length - presentes - ausentes;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -132,17 +134,16 @@ function DayClassCard({
         </div>
       </div>
 
-      {cls.attendees.length === 0 ? (
+      {activeAttendees.length === 0 ? (
         <div className="px-5 py-6 text-center text-[13px] text-faint">Nadie anotado en este horario.</div>
       ) : (
         <ul className="divide-y divide-border/60">
-          {cls.attendees.map((a) => {
+          {activeAttendees.map((a) => {
             const key = `${cls.scheduleId}:${a.userId}`;
-            const cancelled = a.status === "cancelled";
             return (
               <li key={key} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                 <div className="min-w-0 flex-1">
-                  <div className={cn("font-medium truncate", cancelled ? "text-faint line-through" : "text-fg")}>
+                  <div className="font-medium text-fg truncate">
                     {a.name}
                   </div>
                   <div className="flex items-center gap-2 text-[12px] text-muted">
@@ -154,7 +155,6 @@ function DayClassCard({
                     ) : (
                       <span className="text-faint">Sin teléfono</span>
                     )}
-                    {cancelled && <span className="text-warning">· canceló este día</span>}
                   </div>
                 </div>
                 <AttendanceButtons
@@ -283,8 +283,61 @@ export default function ActividadesPage() {
   }, [user, profile, tab, dateISO, fetchDay]);
 
   useEffect(() => {
-    if (user && profile?.role === "profesor" && tab === "semana" && weekGroups.length === 0) fetchWeek();
-  }, [user, profile, tab, weekGroups.length, fetchWeek]);
+    if (user && profile?.role === "profesor" && tab === "semana") fetchWeek();
+  }, [user, profile, tab, fetchWeek]);
+
+  // Realtime subscription and window focus refetch to guarantee the professor always sees live data
+  useEffect(() => {
+    if (!user || profile?.role !== "profesor") return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`roster-live-sync-${dateISO}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "reservations",
+        },
+        () => {
+          fetchDay(dateISO);
+          fetchWeek();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "class_enrollments",
+        },
+        () => {
+          fetchDay(dateISO);
+          fetchWeek();
+        },
+      )
+      .subscribe();
+
+    const handleFocus = () => {
+      fetchDay(dateISO);
+      fetchWeek();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [user, profile, dateISO, fetchDay, fetchWeek]);
 
   const shiftDate = (days: number) => {
     const d = parseLocalISO(dateISO);
@@ -329,8 +382,9 @@ export default function ActividadesPage() {
     let esperados = 0;
     let presentes = 0;
     for (const c of dayClasses) {
-      esperados += c.attendees.length;
-      presentes += c.attendees.filter((a) => a.status === "attended").length;
+      const active = c.attendees.filter((a) => a.status !== "cancelled");
+      esperados += active.length;
+      presentes += active.filter((a) => a.status === "attended").length;
     }
     return { esperados, presentes };
   }, [dayClasses]);
@@ -376,12 +430,23 @@ export default function ActividadesPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => (tab === "dia" ? fetchDay(dateISO) : fetchWeek())}
+              disabled={loadingDay || loadingWeek}
+              className="text-muted hover:text-fg px-2.5 h-8 gap-1.5 text-xs"
+              title="Actualizar lista"
+            >
+              <RefreshCw size={14} className={cn(loadingDay || loadingWeek ? "animate-spin text-accent" : "")} />
+              <span className="hidden sm:inline">Actualizar</span>
+            </Button>
             <span className="hidden sm:inline text-[13px] text-muted">{displayName}</span>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => signOut()}
-              className="text-muted hover:text-danger px-2.5"
+              className="text-muted hover:text-danger px-2.5 h-8"
               title="Cerrar sesión"
             >
               <LogOut size={16} />

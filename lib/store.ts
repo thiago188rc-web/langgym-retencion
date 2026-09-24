@@ -368,9 +368,8 @@ export const useStore = create<AppState>()(
     {
       name: "langgym-store",
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
       partialize: (state) => ({
-        students: state.students,
         config: state.config,
         imports: state.imports,
         hasData: state.hasData,
