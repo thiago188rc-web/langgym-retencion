@@ -17,6 +17,17 @@ export interface SyncImportResult {
   syncedStudents: Student[];
 }
 
+function normalizeNameForLookup(name: string | null | undefined): string {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[,.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Helper to slice arrays into manageable chunks */
 function chunkArray<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -70,6 +81,7 @@ export async function syncExcelImportToSupabase(
     id_socio: string;
     nombre: string;
     apellido: string | null;
+    nombre_completo: string | null;
     telefono: string | null;
     telefono_raw: string | null;
     email: string | null;
@@ -86,7 +98,7 @@ export async function syncExcelImportToSupabase(
       supabase
         .from("students")
         .select(
-          "id, id_socio, nombre, apellido, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
+          "id, id_socio, nombre, apellido, nombre_completo, telefono, telefono_raw, email, habilitado, id_membresia, membresia, fecha_fin, fecha_alta, ultima_asistencia, observacion",
         )
         .eq("organization_id", organizationId)
         // Unique sort key: without it the paged reads below can repeat or skip
@@ -110,8 +122,10 @@ export async function syncExcelImportToSupabase(
       const d = r.telefono_raw.replace(/\D/g, "");
       if (d.length >= 7) existingByPhone.set(d, r);
     }
-    const nameKey = `${r.nombre || ""} ${r.apellido || ""}`.trim().toLowerCase();
-    if (nameKey) existingByName.set(nameKey, r);
+    const nameKey1 = normalizeNameForLookup(`${r.nombre || ""} ${r.apellido || ""}`);
+    if (nameKey1) existingByName.set(nameKey1, r);
+    const nameKey2 = normalizeNameForLookup(r.nombre_completo);
+    if (nameKey2) existingByName.set(nameKey2, r);
   }
 
   const importedSocioSet = new Set<string>();
@@ -186,8 +200,13 @@ export async function syncExcelImportToSupabase(
     if (!existing && cleanDigits.length >= 7) {
       existing = existingByPhone.get(cleanDigits);
     }
-    if (!existing && item.nombreCompleto) {
-      existing = existingByName.get(item.nombreCompleto.trim().toLowerCase());
+    const searchName1 = normalizeNameForLookup(item.nombreCompleto);
+    const searchName2 = normalizeNameForLookup(`${item.nombre || ""} ${item.apellido || ""}`);
+    if (!existing && searchName1) {
+      existing = existingByName.get(searchName1);
+    }
+    if (!existing && searchName2) {
+      existing = existingByName.get(searchName2);
     }
 
     if (!existing) {
@@ -198,8 +217,8 @@ export async function syncExcelImportToSupabase(
         (cleanDigits.length >= 7
           ? `TEL-${cleanDigits}`
           : `AUT-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
-      if (existingBySocio.has(finalSocioId)) {
-        finalSocioId = `${finalSocioId}-${Math.floor(Math.random() * 1000)}`;
+      while (existingBySocio.has(finalSocioId) || importedSocioSet.has(finalSocioId)) {
+        finalSocioId = `${finalSocioId}-${Math.floor(Math.random() * 10000)}`;
       }
       importedSocioSet.add(finalSocioId);
 
@@ -306,10 +325,10 @@ export async function syncExcelImportToSupabase(
   }
   const permanecenCount = importedSocioSet.size - nuevosCount;
 
-  // 2. Audit log in import_records — created BEFORE the student writes below
-  // so its id can be stamped onto every student this import touches
-  // (last_import_id), letting the UI offer a "solo esta importación" view.
-  const { data: importRecRow } = await supabase
+  // 2. Audit log in import_records:
+  // Created with pre-calculated counts so its id satisfies the foreign key
+  // constraint students_last_import_id_fkey on students(last_import_id).
+  const { data: importRecRow, error: recErr } = await supabase
     .from("import_records")
     .insert({
       organization_id: organizationId,
@@ -326,35 +345,49 @@ export async function syncExcelImportToSupabase(
     .select("*")
     .single();
 
-  const lastImportId = importRecRow?.id ?? null;
+  if (recErr || !importRecRow?.id) {
+    console.error("Error al registrar import_record:", recErr);
+    throw new Error(
+      `Error al iniciar el registro de importación en el servidor: ${recErr?.message || "Sin respuesta"}`,
+    );
+  }
 
-  // Combine inserts and updates into unified bulk upsert rows
-  const allUpsertRows = [
-    ...toInsert.map((row) => ({ ...row, last_import_id: lastImportId, updated_at: todayIso })),
-    ...toUpdate.map((row) => ({ ...row, last_import_id: lastImportId, updated_at: todayIso })),
-  ];
+  const lastImportId = importRecRow.id;
 
-  // 3. Perform bulk upsert in chunks of 200 (eliminates N+1 loop entirely)
-  if (allUpsertRows.length > 0) {
-    const upsertChunks = chunkArray(allUpsertRows, 200);
-    let processed = 0;
-    for (const chunk of upsertChunks) {
-      processed += chunk.length;
+  // 3. Persist new and updated students without column mismatch:
+  // PostgREST infers the payload schema from the union of object keys. If rows with 'id'
+  // (toUpdate) and rows without 'id' (toInsert) are sent in the same batch, PostgREST sets
+  // id: null for the toInsert rows, triggering: "null value in column 'id' violates not-null constraint".
+  // Keeping toInsert and toUpdate in distinct bulk chunks eliminates this issue completely.
+
+  // 3a. Bulk upsert new students (chunks of 200) - id is omitted so DB assigns gen_random_uuid()
+  if (toInsert.length > 0) {
+    const insertRows = toInsert.map((row) => ({
+      ...row,
+      last_import_id: lastImportId,
+      updated_at: todayIso,
+    }));
+    const insertChunks = chunkArray(insertRows, 200);
+    let processedInserts = 0;
+    for (const chunk of insertChunks) {
+      processedInserts += chunk.length;
       onProgress?.(
-        `Guardando alumnos (${processed} de ${allUpsertRows.length})...`,
-        90 + Math.round((processed / allUpsertRows.length) * 5),
+        `Registrando nuevos alumnos (${processedInserts} de ${insertRows.length})...`,
+        90 + Math.round((processedInserts / insertRows.length) * 3),
       );
-      const { data: upsertedStudents, error: upsErr } = await supabase
+      const { data: insertedStudents, error: insErr } = await supabase
         .from("students")
         .upsert(chunk, { onConflict: "organization_id, id_socio" })
         .select("id, id_socio, fecha_fin, ultima_asistencia, membresia, habilitado");
 
-      if (upsErr) {
-        console.error("Error en bulk upsert de alumnos:", upsErr);
-        throw new Error(`Error al registrar los alumnos en el servidor: ${upsErr.message}`);
+      if (insErr) {
+        console.error("Error al registrar nuevos alumnos:", insErr);
+        throw new Error(
+          `Error al sincronizar alumnos nuevos (${processedInserts - chunk.length} de ${insertRows.length} guardados). Revisá la conexión e intentá nuevamente. (${insErr.message})`,
+        );
       }
 
-      (upsertedStudents || []).forEach((st) => {
+      (insertedStudents || []).forEach((st) => {
         snapshotInserts.push({
           organization_id: organizationId,
           student_id: st.id,
@@ -365,6 +398,34 @@ export async function syncExcelImportToSupabase(
           habilitado: st.habilitado,
         });
       });
+    }
+  }
+
+  // 3b. Bulk upsert updated students (chunks of 200) - all rows have valid id, updating by PK
+  if (toUpdate.length > 0) {
+    const updateRows = toUpdate.map((row) => ({
+      ...row,
+      last_import_id: lastImportId,
+      updated_at: todayIso,
+    }));
+    const updateChunks = chunkArray(updateRows, 200);
+    let processedUpdates = 0;
+    for (const chunk of updateChunks) {
+      processedUpdates += chunk.length;
+      onProgress?.(
+        `Actualizando alumnos existentes (${processedUpdates} de ${updateRows.length})...`,
+        93 + Math.round((processedUpdates / updateRows.length) * 3),
+      );
+      const { error: updErr } = await supabase
+        .from("students")
+        .upsert(chunk, { onConflict: "id" });
+
+      if (updErr) {
+        console.error("Error al actualizar alumnos existentes:", updErr);
+        throw new Error(
+          `Error al sincronizar alumnos existentes (${processedUpdates - chunk.length} de ${updateRows.length} guardados). Revisá la conexión e intentá nuevamente. (${updErr.message})`,
+        );
+      }
     }
   }
 
@@ -392,8 +453,8 @@ export async function syncExcelImportToSupabase(
   }
 
   const importRecord: ImportRecord = {
-    id: importRecRow?.id || `imp-${Date.now()}`,
-    fecha: importRecRow?.fecha || todayIso,
+    id: lastImportId,
+    fecha: importRecRow.fecha || todayIso,
     archivo: fileName,
     total: importedList.length,
     nuevos: nuevosCount,
